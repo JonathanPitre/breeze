@@ -223,7 +223,19 @@ export const usageHistoryQuerySchema = z.object({
   days: z.coerce.number().int().min(3).max(90).optional()
 });
 
+/**
+ * Confirmation fields every privileged-restore request may carry
+ * (routes/backup/restoreIntegrityGate.ts): a step-up grant for operation
+ * `backup_unattested_restore`, or — only on a deployment running with
+ * two-factor authentication disabled — an explicit confirmation.
+ */
+export const restoreIntegrityConfirmationFields = {
+  stepUpGrant: z.string().uuid().optional(),
+  confirmUnattestedRestore: z.boolean().optional(),
+};
+
 export const restoreSchema = z.object({
+  ...restoreIntegrityConfirmationFields,
   snapshotId: z.string().min(1),
   deviceId: z.string().min(1).optional(),
   targetPath: z.string().optional(),
@@ -341,6 +353,7 @@ export const extendedPolicyUpdateSchema = policyUpdateSchema.extend({
 // ── BMR / Recovery Token schemas ────────────────────────────────────
 
 export const bmrCreateTokenSchema = z.object({
+  ...restoreIntegrityConfirmationFields,
   snapshotId: z.string().guid(),
   restoreType: z.enum(['full', 'selective', 'bare_metal']),
   targetConfig: z
@@ -376,6 +389,7 @@ export const bmrRecoveryBinarySignatureSchema = z.object({
 // ── Bare-metal recovery schemas (W04a) ──────────────────────────────
 
 export const bmrRecoveryCreateSchema = z.object({
+  ...restoreIntegrityConfirmationFields,
   snapshotId: z.string().guid(),
   identity: z.enum(['original', 'new']).default('original'),
 });
@@ -495,6 +509,7 @@ export const bmrMediaListSchema = z.object({
 // with `identity: 'new'` (spec §9: a rehearsal image can never resume the
 // production identity), so a client cannot even ask.
 const bmrVmRestoreHypervSchema = z.object({
+  ...restoreIntegrityConfirmationFields,
   engine: z.literal('hyperv'),
   snapshotId: z.string().guid(),
   targetDeviceId: z.string().guid(),
@@ -521,6 +536,7 @@ export const rebuildVhdxOutputPathSchema = z
 
 const bmrVmRestoreRebuildSchema = z
   .object({
+    ...restoreIntegrityConfirmationFields,
     engine: z.literal('rebuild'),
     snapshotId: z.string().guid(),
     rebuildHostDeviceId: z.string().guid(),
@@ -546,6 +562,7 @@ export const bmrVmRestoreSchema = z.preprocess(
 export type BmrVmRestoreInput = z.infer<typeof bmrVmRestoreSchema>;
 
 export const instantBootSchema = z.object({
+  ...restoreIntegrityConfirmationFields,
   snapshotId: z.string().guid(),
   targetDeviceId: z.string().guid(),
   vmName: z.string().min(1).max(200),
@@ -567,6 +584,7 @@ export const hypervBackupSchema = z.object({
 });
 
 export const hypervRestoreSchema = z.object({
+  ...restoreIntegrityConfirmationFields,
   deviceId: z.string().guid(),
   snapshotId: z.string().guid(),
   vmName: z.string().min(1).max(256).optional(),
