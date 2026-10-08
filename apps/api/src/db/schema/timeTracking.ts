@@ -75,8 +75,9 @@ export const timeEntries = pgTable('time_entries', {
   // Written by the service, pinned by time_entries_billable_minutes_chk. NULL
   // while a timer runs and on pre-feature rows — money readers COALESCE.
   billableMinutes: integer('billable_minutes'),
-  // W06 (#3900) provenance. Server-stamped except 'timer'/'location', which
-  // /start and POST / accept from the client (#4186, zod-restricted).
+  // W06 (#3900) provenance. Server-stamped except client-supplied values
+  // (#4186, zod-restricted): /start accepts 'timer'|'location'; POST / accepts
+  // only 'location'.
   // Values enforced by CHECK time_entries_source_chk in SQL:
   // 'manual' | 'timer' | 'location' | 'remote_session' | 'support_session' |
   // 'ai_suggested' (#4177 — stamped by the intent release path only).
