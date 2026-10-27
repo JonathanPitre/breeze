@@ -9,6 +9,7 @@ import { test } from 'node:test';
 import { buildInstallCommands } from '../apps/web/src/lib/installCommands.ts';
 
 const powershell = process.env.BREEZE_POWERSHELL || (process.platform === 'win32' ? 'powershell.exe' : 'pwsh');
+const environment = Object.fromEntries(Object.entries(process.env).filter(([name]) => name.toLowerCase() !== 'psmodulepath'));
 const fixture = Buffer.from(`function Install-BreezeAgent {
   param([string]$Token, [string]$EnrollmentSecret)
   @{token=$Token; secret=$EnrollmentSecret; message='verified café'} | ConvertTo-Json -Compress
@@ -42,7 +43,7 @@ ${command}
   try {
     await writeFile(path, '\uFEFF' + source, 'utf8');
     return await new Promise((resolve, reject) => {
-      execFile(powershell, ['-NoLogo', '-NoProfile', '-NonInteractive', '-File', path], { timeout: 25_000, encoding: 'utf8' }, (error, stdout, stderr) => {
+      execFile(powershell, ['-NoLogo', '-NoProfile', '-NonInteractive', '-File', path], { timeout: 25_000, encoding: 'utf8', env: environment }, (error, stdout, stderr) => {
         if (error && typeof error.code !== 'number') reject(error);
         else resolve({ code: error?.code ?? 0, stdout, stderr });
       });
