@@ -76,6 +76,7 @@ describe('buildInstallCommands', () => {
       expect(windows.startsWith("& { $ErrorActionPreference='Stop';")).toBe(true);
       expect(fetchRequest).toContain("iwr 'https://rmm.example.com/api/v1/agents/install.ps1'");
       expect(fetchRequest).toContain('-UseBasicParsing -TimeoutSec 10 -MaximumRedirection 0');
+      expect(fetchRequest).toContain("-UserAgent 'BreezeInstaller/1.0'");
       expect(fetchRequest).not.toContain(base.token);
       expect(windows).toContain('if($r.StatusCode -ne 200)');
       expect(windows).toContain('$r.RawContentStream.Position=0');

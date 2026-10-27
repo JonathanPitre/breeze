@@ -28,8 +28,8 @@ async function runBootstrap({ bytes = fixture, sha256 = digest(fixture), status 
   assert.equal(typeof command, 'string');
   const mock = `function Invoke-WebRequest {
     [CmdletBinding()]
-    param([string]$Uri, [switch]$UseBasicParsing, [int]$TimeoutSec, [int]$MaximumRedirection, [hashtable]$Headers)
-    if ($Uri -ne ${literal(url)} -or !$UseBasicParsing -or $TimeoutSec -ne 10 -or $MaximumRedirection -ne 0) { throw 'Invalid download arguments' }
+    param([string]$Uri, [switch]$UseBasicParsing, [int]$TimeoutSec, [int]$MaximumRedirection, [string]$UserAgent, [hashtable]$Headers)
+    if ($Uri -ne ${literal(url)} -or !$UseBasicParsing -or $TimeoutSec -ne 10 -or $MaximumRedirection -ne 0 -or $UserAgent -ne 'BreezeInstaller/1.0') { throw 'Invalid download arguments' }
     if ($Headers.Count -ne 1 -or $Headers['Accept-Encoding'] -ne 'identity') { throw 'Unexpected request headers' }
     $stream = [IO.MemoryStream]::new([Convert]::FromBase64String('${bytes.toString('base64')}'))
     $stream.Position = $stream.Length

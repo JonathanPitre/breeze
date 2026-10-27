@@ -36,7 +36,7 @@ export function buildInstallCommands(opts: InstallCommandOptions): InstallComman
   const windows = installer ?
     `& { $ErrorActionPreference='Stop'; ` +
     `[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12; ` +
-    `$r=iwr ${powershellLiteral(installer.url)} -UseBasicParsing -TimeoutSec 10 -MaximumRedirection 0 -Headers @{'Accept-Encoding'='identity'}; ` +
+    `$r=iwr ${powershellLiteral(installer.url)} -UseBasicParsing -TimeoutSec 10 -MaximumRedirection 0 -UserAgent 'BreezeInstaller/1.0' -Headers @{'Accept-Encoding'='identity'}; ` +
     `if($r.StatusCode -ne 200){throw 'Breeze: installer download did not return HTTP 200'}; ` +
     `$r.RawContentStream.Position=0; ` +
     `if((Get-FileHash -Algorithm SHA256 -InputStream $r.RawContentStream).Hash -ne ${powershellLiteral(installer.sha256)})` +
