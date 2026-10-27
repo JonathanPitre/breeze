@@ -639,9 +639,6 @@ userRoutes.get('/me', async (c) => {
 });
 
 // Update current user's profile.
-// NOTE: `avatarUrl` is intentionally NOT part of this schema. Avatars are
-// staged separately and promoted by `avatarDraftId`; the strict() refinement
-// keeps direct URL writes from being silently ignored.
 const updateMeSchema = z
   .object({
     name: z.string().min(1).max(255).optional(),

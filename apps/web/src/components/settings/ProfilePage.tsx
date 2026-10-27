@@ -508,7 +508,6 @@ export default function ProfilePage({ initialUser }: ProfilePageProps) {
       try {
         const pending = pendingAvatarRef.current;
         if (pending.draft) {
-          // The queue lets Undo discard the last successful stage, including an in-flight upload.
           // runaction-exempt: inline-feedback handler; discard failures stay visible beside the picker.
           const response = await fetchWithAuth(`/users/me/avatar-draft/${pending.draft.draftId}`, { method: 'DELETE' });
           if (!response.ok) throw new Error(t('profilePage.failedToRemoveAvatar'));

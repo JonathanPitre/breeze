@@ -7,9 +7,7 @@ import { captureException } from './sentry';
 /**
  * Avatar storage service (database-backed).
  *
- * Committed avatars live as a `bytea` blob on the user's row (`users.avatar_data`),
- * alongside `avatar_mime` and `avatar_updated_at`; pending drafts live in
- * `user_avatar_drafts` so profile reads never fetch their bytes. This replaced the previous
+ * This replaced the previous
  * filesystem implementation (`/data/avatars/<id>.<ext>`), which depended on a
  * writable `api_data` volume owned by the API's runtime uid — a root-owned
  * volume failed uploads with EACCES → 500 (#1059). Storing the bytes in
