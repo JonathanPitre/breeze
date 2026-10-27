@@ -1305,7 +1305,7 @@ describe('GET /install.ps1 — generated Windows installer', () => {
       const offenders: string[] = [];
       for (const doubleQuoted of script.match(/"(?:[^"\\]|\\.)*"/g) ?? []) {
         for (const match of doubleQuoted.matchAll(/\$([A-Za-z_][A-Za-z0-9_]*):/g)) {
-          if (!knownDriveQualifiedPrefixes.has(match[1].toLowerCase())) offenders.push(`${match[0]} in ${doubleQuoted}`);
+          if (!knownDriveQualifiedPrefixes.has(match[1]?.toLowerCase() ?? '')) offenders.push(`${match[0]} in ${doubleQuoted}`);
         }
       }
       expect(offenders).toEqual([]);
