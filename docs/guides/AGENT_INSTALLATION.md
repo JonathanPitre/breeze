@@ -93,13 +93,9 @@ turn.your-breeze-domain.com:3478 (UDP)
 Run PowerShell as Administrator and execute:
 
 ```powershell
-# One-liner install with automatic enrollment
-irm https://your-server.com/install.ps1 | iex
-
-# Or with enrollment key
-$env:BREEZE_ENROLLMENT_KEY = "your-enrollment-key"
-$env:BREEZE_SERVER_URL = "https://your-server.com"
-irm https://your-server.com/install.ps1 | iex
+# Replace the token with the value from Add Device.
+[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12; $s = irm "https://your-server.com/api/v1/agents/install.ps1" -UseBasicParsing -TimeoutSec 10 -ErrorAction Stop; if ($s -notmatch '^\s*function\s+Install-BreezeAgent\b') { throw "Breeze: invalid installer script response" }; iex $s; Install-BreezeAgent -Token "your-enrollment-token"
+# Add -EnrollmentSecret "your-enrollment-secret" when the enrollment key requires a secret.
 ```
 
 ### macOS (Bash)
