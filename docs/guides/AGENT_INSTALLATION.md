@@ -94,7 +94,7 @@ Run PowerShell as Administrator and execute:
 
 ```powershell
 # Replace the token with the value from Add Device.
-[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12; $s = irm "https://your-server.com/api/v1/agents/install.ps1" -UseBasicParsing -TimeoutSec 10 -ErrorAction Stop; if ($s -notmatch '^\s*function\s+Install-BreezeAgent\b') { throw "Breeze: invalid installer script response" }; iex $s; Install-BreezeAgent -Token "your-enrollment-token"
+& { $ErrorActionPreference='Stop'; [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12; $s=irm "https://your-server.com/api/v1/agents/install.ps1" -UseBasicParsing -TimeoutSec 10 -ErrorAction Stop; if($s -notmatch '^\s*function\s+Install-BreezeAgent\b'){throw "Breeze: invalid installer script response"}; iex $s; Install-BreezeAgent -Token "your-enrollment-token" }
 # Add -EnrollmentSecret "your-enrollment-secret" when the enrollment key requires a secret.
 ```
 

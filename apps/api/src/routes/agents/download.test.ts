@@ -1269,7 +1269,11 @@ describe('GET /install.sh — generated installer script', () => {
 describe('GET /install.ps1 — generated Windows installer', () => {
   it('serves a credential-free function from the configured server URL', async () => {
     const originalBreezeServer = process.env.BREEZE_SERVER;
-    process.env.BREEZE_SERVER = 'https://rmm.example.com';
+    const originalPublicApiUrl = process.env.PUBLIC_API_URL;
+    const originalApiUrl = process.env.API_URL;
+    process.env.BREEZE_SERVER = 'https://internal.example.net';
+    process.env.PUBLIC_API_URL = 'https://rmm.example.com///';
+    delete process.env.API_URL;
 
     try {
       const res = await downloadRoutes.request('/install.ps1');
@@ -1287,9 +1291,31 @@ describe('GET /install.ps1 — generated Windows installer', () => {
       expect(script).toContain('$serverUrl/api/v1/agents/download/windows/amd64');
       expect(script).not.toContain('enroll_abc123');
       expect(script).not.toContain('Install-BreezeAgent -Token');
+      expect(script).not.toMatch(/ServerCertificateValidationCallback|SkipCertificateCheck/);
+      expect(script).not.toContain('github.com');
+      expect(script).not.toMatch(/\bservice\s+start\b/i);
+      expect(script).not.toMatch(/-OutFile\s+['"]?breeze-agent\.exe\b|\$pwd/i);
+      expect(script).toContain('breeze-install-$guid');
+      expect(script).not.toMatch(/New-Item[^\r\n]*-Force/i);
+
+      const knownDriveQualifiedPrefixes = new Set([
+        'env', 'global', 'script', 'local', 'private', 'function', 'variable', 'alias',
+        'cert', 'hklm', 'hkcu', 'hkcr', 'hkey_local_machine', 'hkey_current_user', 'wsman',
+      ]);
+      const offenders: string[] = [];
+      for (const doubleQuoted of script.match(/"(?:[^"\\]|\\.)*"/g) ?? []) {
+        for (const match of doubleQuoted.matchAll(/\$([A-Za-z_][A-Za-z0-9_]*):/g)) {
+          if (!knownDriveQualifiedPrefixes.has(match[1].toLowerCase())) offenders.push(`${match[0]} in ${doubleQuoted}`);
+        }
+      }
+      expect(offenders).toEqual([]);
     } finally {
       if (originalBreezeServer === undefined) delete process.env.BREEZE_SERVER;
       else process.env.BREEZE_SERVER = originalBreezeServer;
+      if (originalPublicApiUrl === undefined) delete process.env.PUBLIC_API_URL;
+      else process.env.PUBLIC_API_URL = originalPublicApiUrl;
+      if (originalApiUrl === undefined) delete process.env.API_URL;
+      else process.env.API_URL = originalApiUrl;
     }
   });
 
