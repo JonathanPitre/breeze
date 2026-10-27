@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { buildInstallCommands } from '../apps/web/src/lib/installCommands.ts';
+import { generateWindowsInstallScript } from '../apps/api/src/services/windowsInstallScript.ts';
 
 const powershell = process.env.BREEZE_POWERSHELL || (process.platform === 'win32' ? 'powershell.exe' : 'pwsh');
 const environment = Object.fromEntries(Object.entries(process.env).filter(([name]) => name.toLowerCase() !== 'psmodulepath'));
@@ -18,7 +19,7 @@ const fixture = Buffer.from(`function Install-BreezeAgent {
 const digest = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const literal = (value) => `'${value.replaceAll("'", "''")}'`;
 
-async function runBootstrap({ bytes = fixture, sha256 = digest(fixture), status = 200, token = 'test-token', secret = '', url = 'https://rmm.example.test/api/v1/agents/install.ps1', live = false } = {}) {
+async function runBootstrap({ bytes = fixture, sha256 = digest(fixture), status = 200, token = 'test-token', secret = '', url = 'https://rmm.example.test/api/v1/agents/install.ps1', live = false, setup = '' } = {}) {
   const directory = await mkdtemp(join(tmpdir(), 'breeze-bootstrap-test-'));
   const path = join(directory, 'bootstrap.ps1');
   const command = buildInstallCommands({
@@ -36,8 +37,10 @@ async function runBootstrap({ bytes = fixture, sha256 = digest(fixture), status 
     [pscustomobject]@{StatusCode=${status}; RawContentStream=$stream; Content='Write-Output "UNVERIFIED CONTENT EXECUTED"'}
   }`;
   const source = `[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
+$env:TEMP = ${literal(directory)}
 function Install-BreezeAgent { Write-Output 'STALE FUNCTION EXECUTED' }
 ${live ? '' : mock}
+${setup}
 ${command}
 `;
   try {
@@ -64,6 +67,65 @@ test('verified raw UTF-8 bytes execute once with literal enrollment arguments', 
   const result = await runBootstrap({ token, secret });
   assert.equal(result.code, 0, result.stderr);
   assert.deepEqual(JSON.parse(result.stdout), { token, secret, message: 'verified café' });
+});
+
+test('generated installer retrieves metadata and a pinned binary through browser interstitials', async () => {
+  const binary = Buffer.from('MZ-test-agent');
+  const requests = [];
+  let bytes;
+  const server = createServer((request, response) => {
+    requests.push({ url: request.url, headers: request.headers });
+    if (request.headers['user-agent'] !== 'BreezeInstaller/1.0') {
+      response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      response.end('<!doctype html><title>browser interstitial</title>');
+    } else if (request.url === '/api/v1/agents/install.ps1') {
+      response.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+      response.end(bytes);
+    } else if (request.url === '/api/v1/agent-versions/latest?platform=windows&arch=amd64&component=agent') {
+      response.writeHead(200, { 'Content-Type': 'application/json' });
+      response.end(JSON.stringify({ version: '1.2.3', checksum: digest(binary) }));
+    } else if (request.url === '/api/v1/agents/download/windows/amd64?version=1.2.3') {
+      response.writeHead(200, { 'Content-Type': 'application/octet-stream' });
+      response.end(binary);
+    } else {
+      response.writeHead(404);
+      response.end();
+    }
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  try {
+    const url = `http://127.0.0.1:${server.address().port}`;
+    let source = generateWindowsInstallScript(url);
+    const nativeOperations = [
+      ['$osv = [System.Environment]::OSVersion.Version', "$osv = [Version]'10.0'"],
+      ['$sid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value', "$sid = 'S-1-5-18'"],
+      ['& $exe @enrollArgs', "Write-Output ('ENROLL=' + (ConvertTo-Json -Compress -InputObject $enrollArgs)); $LASTEXITCODE = 0"],
+      ['& $exe service install', "Write-Output 'SERVICE_INSTALL'; $LASTEXITCODE = 0"],
+    ];
+    for (const [original, replacement] of nativeOperations) {
+      assert.equal(source.split(original).length, 2, `Expected one native operation: ${original}`);
+      source = source.replace(original, () => replacement);
+    }
+    bytes = Buffer.from(source, 'utf8');
+    const result = await runBootstrap({
+      url: `${url}/api/v1/agents/install.ps1`, sha256: digest(bytes), live: true, secret: 'test-secret',
+      setup: "function icacls { $global:LASTEXITCODE = 0 }\nfunction Get-AuthenticodeSignature { [pscustomobject]@{Status='NotSigned'} }",
+    });
+    assert.equal(result.code, 0, result.stderr);
+    const lines = result.stdout.trim().split(/\r?\n/);
+    assert.deepEqual(JSON.parse(lines[0].slice('ENROLL='.length)), ['enroll', 'test-token', '--server', url, '--enrollment-secret', 'test-secret']);
+    assert.equal(lines[1], 'SERVICE_INSTALL');
+    assert.equal(lines.length, 2);
+    assert.equal(requests.length, 3);
+    for (const request of requests) {
+      assert.equal(request.headers['user-agent'], 'BreezeInstaller/1.0');
+      assert.equal(request.headers.authorization, undefined);
+      assert.equal(request.headers.cookie, undefined);
+      assert.doesNotMatch(request.url, /test-token|test-secret/);
+    }
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
 });
 
 for (const codePoint of [0x2018, 0x2019, 0x201a, 0x201b]) {
