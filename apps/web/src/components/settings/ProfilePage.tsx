@@ -62,12 +62,13 @@ type User = {
 };
 
 type AvatarDraft = { draftId: string; intent: 'replace' | 'remove'; previewUrl: string | null; expiresAt: string };
+type AvatarSelection = { draft: AvatarDraft | null; localPreview: string | null; fileName: string | null };
 type AvatarDraftUiState =
   | { status: 'idle'; draft: null; localPreview: null; fileName: null; error: string | null }
   | { status: 'staging'; draft: AvatarDraft | null; localPreview: string | null; fileName: string | null; error: string | null }
   | { status: 'ready'; draft: AvatarDraft; localPreview: string | null; fileName: string | null; error: string | null }
   | { status: 'discarding'; draft: AvatarDraft | null; localPreview: string | null; fileName: string | null; error: string | null }
-  | { status: 'failed'; draft: AvatarDraft | null; localPreview: string | null; fileName: string | null; error: string };
+  | { status: 'failed' | 'preview-failed'; draft: AvatarDraft | null; localPreview: string | null; fileName: string | null; error: string };
 
 // Typed reason codes the SSO re-auth callback redirects back with
 // (`/settings/profile?ssoReauthError=<code>`). Anything not listed falls back
@@ -266,6 +267,9 @@ export default function ProfilePage({ initialUser }: ProfilePageProps) {
   avatarStateRef.current = avatarDraftUi;
   const avatarActionRef = useRef(0);
   const avatarStageQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const pendingAvatarRef = useRef<AvatarSelection>({ draft: null, localPreview: null, fileName: null });
+  const avatarPreviewUrlsRef = useRef(new Set<string>());
+  const profileSavingRef = useRef(false);
   const updateAuthUser = useAuthStore((s) => s.updateUser);
 
   const {
@@ -285,8 +289,14 @@ export default function ProfilePage({ initialUser }: ProfilePageProps) {
   // avatar (fetched as blob through fetchWithAuth so the Bearer token gets
   // attached — the API requires auth on GET /users/:id/avatar, and <img src=>
   // can't send headers).
-  const resolvedAvatarUrl = useAvatarBlobUrl(avatarDraftUi.localPreview ? null : avatarDraftUi.draft ? avatarDraftUi.draft.previewUrl : user?.avatarUrl ?? null);
+  const handleAvatarPreviewError = useCallback(() => {
+    setAvatarDraftUi((state) => state.draft?.intent === 'replace' && !state.localPreview
+      ? { ...state, status: 'preview-failed', error: t('profilePage.failedToLoadAvatarPreview') }
+      : state);
+  }, [t]);
+  const resolvedAvatarUrl = useAvatarBlobUrl(avatarDraftUi.localPreview ? null : avatarDraftUi.draft ? avatarDraftUi.draft.previewUrl : user?.avatarUrl ?? null, handleAvatarPreviewError);
   const previewAvatarUrl = avatarDraftUi.localPreview || resolvedAvatarUrl || '';
+  const isAvatarPreviewMissing = avatarDraftUi.status === 'preview-failed' || (avatarDraftUi.draft?.intent === 'replace' && !previewAvatarUrl);
   const canRemoveAvatar = Boolean(user?.avatarUrl || avatarDraftUi.draft?.intent === 'replace');
   const canUndoAvatar = Boolean(avatarDraftUi.draft || avatarDraftUi.status === 'staging' || avatarDraftUi.status === 'failed');
 
@@ -312,6 +322,7 @@ export default function ProfilePage({ initialUser }: ProfilePageProps) {
         }
         if (avatarActionRef.current === avatarActionAtStart) {
           const draft = userData.avatarDraft as AvatarDraft | null;
+          pendingAvatarRef.current = { draft: draft ?? null, localPreview: null, fileName: null };
           setAvatarDraftUi(draft
             ? { status: 'ready', draft, localPreview: null, fileName: null, error: null }
             : { status: 'idle', draft: null, localPreview: null, fileName: null, error: null });
@@ -353,13 +364,14 @@ export default function ProfilePage({ initialUser }: ProfilePageProps) {
   }, []);
 
   const handleProfileSubmit = async (values: ProfileFormValues) => {
-    if (avatarDraftUi.status === 'staging' || avatarDraftUi.status === 'discarding') return;
+    if (profileSavingRef.current || avatarStateRef.current.status === 'staging' || avatarStateRef.current.status === 'discarding' || isAvatarPreviewMissing) return;
+    profileSavingRef.current = true;
     clearMessages();
     try {
       setIsUpdatingProfile(true);
       const payload = {
         name: values.name.trim(),
-        ...(avatarDraftUi.draft ? { avatarDraftId: avatarDraftUi.draft.draftId } : {}),
+        ...(pendingAvatarRef.current.draft ? { avatarDraftId: pendingAvatarRef.current.draft.draftId } : {}),
       };
 
       // runaction-exempt: inline-feedback handler. The catch below routes every failure into
@@ -377,7 +389,9 @@ export default function ProfilePage({ initialUser }: ProfilePageProps) {
       const updatedUser = await response.json();
       setUser(prev => (prev ? { ...prev, ...updatedUser } : updatedUser));
       updateAuthUser({ name: updatedUser.name, avatarUrl: updatedUser.avatarUrl ?? undefined });
-      if (avatarDraftUi.localPreview?.startsWith('blob:')) URL.revokeObjectURL(avatarDraftUi.localPreview);
+      for (const url of avatarPreviewUrlsRef.current) URL.revokeObjectURL(url);
+      avatarPreviewUrlsRef.current.clear();
+      pendingAvatarRef.current = { draft: null, localPreview: null, fileName: null };
       avatarActionRef.current += 1;
       setAvatarDraftUi({ status: 'idle', draft: null, localPreview: null, fileName: null, error: null });
       reset({
@@ -387,6 +401,7 @@ export default function ProfilePage({ initialUser }: ProfilePageProps) {
     } catch (error) {
       setProfileError(error instanceof Error ? error.message : t('profilePage.failedToUpdateProfile'));
     } finally {
+      profileSavingRef.current = false;
       setIsUpdatingProfile(false);
     }
   };
@@ -406,19 +421,34 @@ export default function ProfilePage({ initialUser }: ProfilePageProps) {
     return null;
   }, [t]);
 
+  const recordPendingAvatar = useCallback((selection: AvatarSelection) => {
+    const oldPreview = pendingAvatarRef.current.localPreview;
+    if (oldPreview && oldPreview !== selection.localPreview) {
+      URL.revokeObjectURL(oldPreview);
+      avatarPreviewUrlsRef.current.delete(oldPreview);
+    }
+    pendingAvatarRef.current = selection;
+  }, []);
+
   const selectAvatarFile = useCallback((file: File) => {
+    if (profileSavingRef.current || avatarStateRef.current.status === 'discarding') return;
+    clearMessages();
     const err = validateAvatarFile(file);
     if (err) {
       setAvatarDraftUi((state) => ({ ...state, error: err }));
       return;
     }
-    const previous = avatarStateRef.current;
     const generation = ++avatarActionRef.current;
     const localPreview = URL.createObjectURL(file);
-    setAvatarDraftUi({ status: 'staging', draft: previous.draft, localPreview, fileName: file.name, error: null });
+    avatarPreviewUrlsRef.current.add(localPreview);
+    setAvatarDraftUi({ status: 'staging', draft: pendingAvatarRef.current.draft, localPreview, fileName: file.name, error: null });
     if (fileInputRef.current) fileInputRef.current.value = '';
     const stage = async () => {
-      if (generation !== avatarActionRef.current) { URL.revokeObjectURL(localPreview); return; }
+      if (generation !== avatarActionRef.current) {
+        URL.revokeObjectURL(localPreview);
+        avatarPreviewUrlsRef.current.delete(localPreview);
+        return;
+      }
       const form = new FormData();
       form.append('file', file);
       try {
@@ -429,35 +459,24 @@ export default function ProfilePage({ initialUser }: ProfilePageProps) {
           throw new Error(errorData.message ?? errorData.error ?? t('profilePage.failedToUploadAvatar'));
         }
         const draft = await response.json() as AvatarDraft;
-        if (generation !== avatarActionRef.current) {
-          // runaction-exempt: best-effort cleanup for a superseded upload; it must not toast.
-          await fetchWithAuth(`/users/me/avatar-draft/${draft.draftId}`, { method: 'DELETE' }).catch(() => undefined);
-          URL.revokeObjectURL(localPreview);
-          return;
-        }
-        URL.revokeObjectURL(localPreview);
-        setAvatarDraftUi({ status: 'ready', draft, localPreview: null, fileName: file.name, error: null });
+        const selection = { draft, localPreview, fileName: file.name };
+        recordPendingAvatar(selection);
+        if (generation === avatarActionRef.current) setAvatarDraftUi({ status: 'ready', ...selection, error: null });
       } catch (error) {
         URL.revokeObjectURL(localPreview);
+        avatarPreviewUrlsRef.current.delete(localPreview);
         if (generation !== avatarActionRef.current) return;
-        const oldLocalPreview = previous.status === 'staging' || previous.status === 'discarding' ? null : previous.localPreview;
-        setAvatarDraftUi({
-          status: 'failed',
-          draft: previous.draft,
-          localPreview: oldLocalPreview,
-          fileName: previous.fileName,
-          error: error instanceof Error ? error.message : t('profilePage.failedToUploadAvatar'),
-        });
+        setAvatarDraftUi({ status: 'failed', ...pendingAvatarRef.current, error: error instanceof Error ? error.message : t('profilePage.failedToUploadAvatar') });
       }
     };
-    avatarStageQueueRef.current = avatarStageQueueRef.current.catch(() => undefined).then(stage);
-  }, [validateAvatarFile, t]);
+    avatarStageQueueRef.current = avatarStageQueueRef.current.then(stage);
+  }, [clearMessages, recordPendingAvatar, validateAvatarFile, t]);
 
   const handleAvatarRemove = useCallback(() => {
-    const previous = avatarStateRef.current;
+    if (profileSavingRef.current || avatarStateRef.current.status === 'discarding') return;
+    clearMessages();
     const generation = ++avatarActionRef.current;
-    if (previous.localPreview?.startsWith('blob:')) URL.revokeObjectURL(previous.localPreview);
-    setAvatarDraftUi({ status: 'staging', draft: previous.draft, localPreview: null, fileName: null, error: null });
+    setAvatarDraftUi({ status: 'staging', ...pendingAvatarRef.current, error: null });
     const stage = async () => {
       if (generation !== avatarActionRef.current) return;
       try {
@@ -468,43 +487,44 @@ export default function ProfilePage({ initialUser }: ProfilePageProps) {
           throw new Error(errorData.message ?? errorData.error ?? t('profilePage.failedToRemoveAvatar'));
         }
         const draft = await response.json() as AvatarDraft;
-        if (generation !== avatarActionRef.current) {
-          // runaction-exempt: best-effort cleanup for a superseded removal; it must not toast.
-          await fetchWithAuth(`/users/me/avatar-draft/${draft.draftId}`, { method: 'DELETE' }).catch(() => undefined);
-          return;
-        }
-        setAvatarDraftUi({ status: 'ready', draft, localPreview: null, fileName: null, error: null });
+        const selection = { draft, localPreview: null, fileName: null };
+        recordPendingAvatar(selection);
+        if (generation === avatarActionRef.current) setAvatarDraftUi({ status: 'ready', ...selection, error: null });
       } catch (error) {
         if (generation !== avatarActionRef.current) return;
-        setAvatarDraftUi({ status: 'failed', draft: previous.draft, localPreview: previous.localPreview, fileName: previous.fileName, error: error instanceof Error ? error.message : t('profilePage.failedToRemoveAvatar') });
+        setAvatarDraftUi({ status: 'failed', ...pendingAvatarRef.current, error: error instanceof Error ? error.message : t('profilePage.failedToRemoveAvatar') });
       }
     };
-    avatarStageQueueRef.current = avatarStageQueueRef.current.catch(() => undefined).then(stage);
-  }, [t]);
+    avatarStageQueueRef.current = avatarStageQueueRef.current.then(stage);
+  }, [clearMessages, recordPendingAvatar, t]);
 
   const handleAvatarUndo = useCallback(async () => {
-    const previous = avatarStateRef.current;
+    if (profileSavingRef.current || avatarStateRef.current.status === 'discarding') return;
+    clearMessages();
     const generation = ++avatarActionRef.current;
-    if (previous.localPreview?.startsWith('blob:')) URL.revokeObjectURL(previous.localPreview);
-    setAvatarDraftUi({ status: 'discarding', draft: previous.draft, localPreview: null, fileName: null, error: null });
+    setAvatarDraftUi({ status: 'discarding', draft: pendingAvatarRef.current.draft, localPreview: null, fileName: null, error: null });
     const discard = async () => {
       if (generation !== avatarActionRef.current) return;
       try {
-        if (previous.draft) {
-          // Queue behind any in-flight stage so its upsert cannot survive Undo.
+        const pending = pendingAvatarRef.current;
+        if (pending.draft) {
+          // The queue lets Undo discard the last successful stage, including an in-flight upload.
           // runaction-exempt: inline-feedback handler; discard failures stay visible beside the picker.
-          const response = await fetchWithAuth(`/users/me/avatar-draft/${previous.draft.draftId}`, { method: 'DELETE' });
+          const response = await fetchWithAuth(`/users/me/avatar-draft/${pending.draft.draftId}`, { method: 'DELETE' });
           if (!response.ok) throw new Error(t('profilePage.failedToRemoveAvatar'));
         }
-        if (generation === avatarActionRef.current) setAvatarDraftUi({ status: 'idle', draft: null, localPreview: null, fileName: null, error: null });
+        for (const url of avatarPreviewUrlsRef.current) URL.revokeObjectURL(url);
+        avatarPreviewUrlsRef.current.clear();
+        pendingAvatarRef.current = { draft: null, localPreview: null, fileName: null };
+        setAvatarDraftUi({ status: 'idle', draft: null, localPreview: null, fileName: null, error: null });
       } catch (error) {
-        if (generation === avatarActionRef.current) setAvatarDraftUi({ status: 'failed', draft: previous.draft, localPreview: null, fileName: null, error: error instanceof Error ? error.message : t('profilePage.failedToRemoveAvatar') });
+        setAvatarDraftUi({ status: 'failed', ...pendingAvatarRef.current, error: error instanceof Error ? error.message : t('profilePage.failedToRemoveAvatar') });
       }
       if (fileInputRef.current) fileInputRef.current.value = '';
     };
-    avatarStageQueueRef.current = avatarStageQueueRef.current.catch(() => undefined).then(discard);
+    avatarStageQueueRef.current = avatarStageQueueRef.current.then(discard);
     await avatarStageQueueRef.current;
-  }, [t]);
+  }, [clearMessages, t]);
 
   const handleAvatarFilePicked = useCallback((evt: React.ChangeEvent<HTMLInputElement>) => {
     const file = evt.target.files?.[0];
@@ -519,8 +539,9 @@ export default function ProfilePage({ initialUser }: ProfilePageProps) {
   }, [selectAvatarFile]);
 
   useEffect(() => () => {
-    const localPreview = avatarStateRef.current.localPreview;
-    if (localPreview?.startsWith('blob:')) URL.revokeObjectURL(localPreview);
+    avatarActionRef.current += 1;
+    for (const url of avatarPreviewUrlsRef.current) URL.revokeObjectURL(url);
+    avatarPreviewUrlsRef.current.clear();
   }, []);
 
   const handlePasswordChange = async (values: {
@@ -1509,7 +1530,7 @@ export default function ProfilePage({ initialUser }: ProfilePageProps) {
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  disabled={avatarDraftUi.status === 'discarding'}
+                  disabled={isUpdatingProfile || isSubmitting || avatarDraftUi.status === 'discarding'}
                   className="rounded-md border px-3 py-1.5 text-sm font-medium hover:bg-muted transition-colors disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {t('profilePage.changePicture')}</button>
@@ -1517,7 +1538,7 @@ export default function ProfilePage({ initialUser }: ProfilePageProps) {
                   <button
                     type="button"
                     onClick={handleAvatarRemove}
-                    disabled={avatarDraftUi.status === 'discarding'}
+                    disabled={isUpdatingProfile || isSubmitting || avatarDraftUi.status === 'discarding'}
                     className="rounded-md border px-3 py-1.5 text-sm font-medium text-destructive hover:bg-destructive/10 transition-colors disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {t('profilePage.remove')}
@@ -1529,7 +1550,7 @@ export default function ProfilePage({ initialUser }: ProfilePageProps) {
                   {avatarDraftUi.fileName && <span className="truncate">{avatarDraftUi.fileName}</span>}
                   {avatarDraftUi.status === 'staging' && <span role="status">{t('profilePage.uploading')}</span>}
                   <div className="ml-auto flex gap-2">
-                    {canUndoAvatar && <button type="button" onClick={handleAvatarUndo} disabled={avatarDraftUi.status === 'discarding'} className="rounded-md border px-3 py-1 text-xs font-medium hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60">{t('profilePage.undoAvatarChange')}</button>}
+                    {canUndoAvatar && <button type="button" onClick={handleAvatarUndo} disabled={isUpdatingProfile || isSubmitting || avatarDraftUi.status === 'discarding'} className="rounded-md border px-3 py-1 text-xs font-medium hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60">{t('profilePage.undoAvatarChange')}</button>}
                   </div>
                 </div>
               )}
@@ -1580,7 +1601,7 @@ export default function ProfilePage({ initialUser }: ProfilePageProps) {
 
         <button
           type="submit"
-          disabled={isProfileLoading}
+          disabled={isProfileLoading || isAvatarPreviewMissing}
           className="flex h-11 w-full items-center justify-center rounded-md bg-primary text-sm font-medium text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {isUpdatingProfile || isSubmitting ? t('profilePage.saving') : t('profilePage.saveChanges')}

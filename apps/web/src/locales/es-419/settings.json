@@ -4622,6 +4622,7 @@
     "updateYourPersonalDetails": "Actualice sus datos personales.",
     "avatar": "Avatar",
     "changePicture": "Cambiar imagen",
+    "failedToLoadAvatarPreview": "No se pudo cargar la vista previa. Selecciona la imagen de nuevo.",
     "undoAvatarChange": "Deshacer",
     "cancel": "Cancelar",
     "name": "Nombre",

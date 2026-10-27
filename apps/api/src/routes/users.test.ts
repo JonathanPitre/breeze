@@ -3820,6 +3820,16 @@ describe('user routes', () => {
         expect(deleteAvatar).not.toHaveBeenCalled();
       });
 
+      it('rejects Undo of a superseded draft and permits retrying an already discarded draft', async () => {
+        await app.request('/users/me/avatar-draft/remove', { method: 'POST' });
+        const stale = await app.request('/users/me/avatar-draft/33333333-3333-4333-8333-333333333333', { method: 'DELETE' });
+        expect(stale.status).toBe(409);
+        expect(avatarDraftStore.has(ME_ID)).toBe(true);
+        const path = '/users/me/avatar-draft/22222222-2222-4222-8222-222222222222';
+        expect((await app.request(path, { method: 'DELETE' })).status).toBe(200);
+        expect((await app.request(path, { method: 'DELETE' })).status).toBe(200);
+      });
+
       it('conflicts on a stale draft id before writing a profile name', async () => {
         vi.mocked(db.select).mockReturnValueOnce({ from: () => ({ where: () => ({ limit: () => Promise.resolve([{
           email: 'test@example.com', passwordHash: null, preferences: {}, partnerId: 'partner-123',
@@ -3853,8 +3863,9 @@ describe('user routes', () => {
         expect(txUpdate).not.toHaveBeenCalled();
       });
 
-      it('promotes the exact draft and saves the name in one transaction', async () => {
+      it.each(['replace', 'remove'] as const)('promotes the exact %s draft and saves the name in one transaction', async (intent) => {
         const draftId = '22222222-2222-4222-8222-222222222222';
+        const avatarUrl = intent === 'replace' ? `/api/v1/users/${ME_ID}/avatar?v=${draftId}` : null;
         vi.mocked(db.select).mockReturnValueOnce({ from: () => ({ where: () => ({ limit: () => Promise.resolve([{
           email: 'test@example.com', passwordHash: null, preferences: {}, partnerId: 'partner-123',
         }]) }) }) } as any);
@@ -3863,13 +3874,13 @@ describe('user routes', () => {
           set: (values: Record<string, unknown>) => {
             setValues = values;
             return { where: () => ({ returning: async () => [{
-              id: ME_ID, email: 'test@example.com', name: 'New name', avatarUrl: `/api/v1/users/${ME_ID}/avatar?v=${draftId}`,
+              id: ME_ID, email: 'test@example.com', name: 'New name', avatarUrl,
               status: 'active', mfaEnabled: false, preferences: {},
             }] }) };
           },
         }));
         const txDelete = vi.fn(() => ({ where: () => Promise.resolve([]) }));
-        const pendingDraft = { draftId, intent: 'replace', mime: 'image/png', bytes: PNG_BYTES, expiresAt: new Date(Date.now() + 10000) };
+        const pendingDraft = { draftId, intent, mime: intent === 'replace' ? 'image/png' : null, bytes: intent === 'replace' ? PNG_BYTES : null, expiresAt: new Date(Date.now() + 10000) };
         vi.mocked(db.transaction).mockImplementationOnce(async (callback: any) => callback({
           select: () => ({ from: () => ({ where: () => ({ limit: () => ({ for: async () => [pendingDraft] }) }) }) }),
           update: txUpdate,
@@ -3877,8 +3888,8 @@ describe('user routes', () => {
         } as any));
         const res = await app.request('/users/me', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'New name', avatarDraftId: draftId }) });
         expect(res.status).toBe(200);
-        expect((await res.json()).avatarUrl).toBe(`/api/v1/users/${ME_ID}/avatar?v=${draftId}`);
-        expect(setValues).toMatchObject({ name: 'New name', avatarData: PNG_BYTES, avatarMime: 'image/png' });
+        expect((await res.json()).avatarUrl).toBe(avatarUrl);
+        expect(setValues).toMatchObject({ name: 'New name', avatarData: pendingDraft.bytes, avatarMime: pendingDraft.mime, avatarUrl });
         expect(txDelete).toHaveBeenCalledTimes(1);
       });
     });

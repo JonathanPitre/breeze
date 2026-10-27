@@ -119,7 +119,7 @@ Content-Type: multipart/form-data
 file=<image>
 ```
 
-To stage removal, send `POST /users/me/avatar-draft/remove`. To undo a draft, send `DELETE /users/me/avatar-draft/:draftId`. Save it with the profile update:
+To stage removal, send `POST /users/me/avatar-draft/remove`. To undo a draft, send `DELETE /users/me/avatar-draft/:draftId`. Undo returns `409` if another draft has replaced it; repeating an already completed Undo succeeds. Save it with the profile update:
 
 ```json
 {
@@ -128,7 +128,7 @@ To stage removal, send `POST /users/me/avatar-draft/remove`. To undo a draft, se
 }
 ```
 
-The profile update promotes that exact draft and saves the name in one transaction. A missing, expired, or stale draft ID returns `409` without changing the name. The immediate `POST` and `DELETE /users/me/avatar` endpoints remain available for compatibility.
+The profile update promotes that exact draft and saves the name in one transaction. A missing, expired, or stale draft ID returns `409` without changing the name. The immediate `POST` and `DELETE /users/me/avatar` endpoints remain available for compatibility. They do not clear pending drafts. Discard the draft explicitly before using the immediate endpoints if the pending change should be abandoned.
 
 ---
 

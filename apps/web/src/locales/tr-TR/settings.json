@@ -4622,6 +4622,7 @@
     "updateYourPersonalDetails": "Kişisel bilgilerinizi güncelleyin.",
     "avatar": "Avatarı",
     "changePicture": "Fotoğrafı değiştir",
+    "failedToLoadAvatarPreview": "Resim önizlemesi yüklenemedi. Resmi yeniden seçin.",
     "undoAvatarChange": "Geri al",
     "cancel": "İptal",
     "name": "İsim",

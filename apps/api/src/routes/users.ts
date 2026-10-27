@@ -1336,7 +1336,9 @@ userRoutes.get('/me/avatar-draft/:draftId/preview', async (c) => {
 userRoutes.delete('/me/avatar-draft/:draftId', async (c) => {
   const draftId = c.req.param('draftId');
   if (!z.string().uuid().safeParse(draftId).success) return c.json({ error: 'Avatar draft not found' }, 404);
-  await discardAvatarDraft(c.get('auth').user.id, draftId);
+  const userId = c.get('auth').user.id;
+  const discarded = await discardAvatarDraft(userId, draftId);
+  if (!discarded && await readAvatarDraftSummary(userId)) return c.json({ error: 'Avatar draft changed. Choose a picture again.' }, 409);
   return c.json({ discarded: true });
 });
 

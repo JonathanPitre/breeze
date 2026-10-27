@@ -7,6 +7,7 @@ import { SSO_REAUTH_INTENT_KEY, stashSsoReauthIntent } from '@/lib/ssoReauthInte
 import { writeDensity, writeFontPreference, writeThemePreference, writeTimeFormatPreference } from '@/lib/appearance';
 
 const { updateUserMock } = vi.hoisted(() => ({ updateUserMock: vi.fn() }));
+const { avatarBlobUrlMock } = vi.hoisted(() => ({ avatarBlobUrlMock: vi.fn<(url: string | null | undefined, onError?: () => void) => string | null>() }));
 
 vi.mock('../../stores/auth', () => ({
   createPasskeyCredential: vi.fn(),
@@ -29,7 +30,7 @@ vi.mock('../shared/Toast', () => ({ showToast: showToastMock }));
 // flow on /users/me/avatar; mocking the hook keeps the fetch mock consumption
 // order deterministic.
 vi.mock('@/lib/avatarBlobCache', () => ({
-  useAvatarBlobUrl: (url: string | null | undefined) => url ?? null,
+  useAvatarBlobUrl: avatarBlobUrlMock,
 }));
 
 // Approval-security section loads approver devices on mount; stub it so it
@@ -94,6 +95,7 @@ function installLocalStorageStub() {
 // Stub URL.createObjectURL / revokeObjectURL — jsdom doesn't provide them by
 // default, and the component calls them when a file is selected for preview.
 beforeEach(() => {
+  avatarBlobUrlMock.mockImplementation((url) => url ?? null);
   installLocalStorageStub();
   document.documentElement.classList.remove('dark');
   document.documentElement.removeAttribute('data-density');
@@ -299,6 +301,120 @@ describe('ProfilePage avatar settings', () => {
     await waitFor(() => expect(fetchWithAuthMock).toHaveBeenCalledWith(`/users/me/avatar-draft/${draftId}`, { method: 'DELETE' }));
     await waitFor(() => expect(screen.getByRole('button', { name: 'Save changes' })).toBeEnabled());
     expect(screen.queryByRole('button', { name: 'Undo' })).toBeNull();
+    expect(updateUserMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps a completed upload visible when Undo fails and allows retrying Undo', async () => {
+    const draftId = '66666666-6666-4666-8666-666666666666';
+    let resolveStage!: (response: Response) => void;
+    let deleteFails = true;
+    fetchWithAuthMock.mockImplementation(async (url) => {
+      if (String(url) === '/auth/passkeys') return makeJsonResponse({ passkeys: [] });
+      if (String(url) === '/users/me') return makeJsonResponse({ avatarDraft: null });
+      if (String(url) === '/users/me/avatar-draft') return new Promise<Response>((resolve) => { resolveStage = resolve; });
+      if (String(url) === `/users/me/avatar-draft/${draftId}`) return makeJsonResponse({}, !deleteFails);
+      return undefined as unknown as Response;
+    });
+    render(<ProfilePage initialUser={{ id: 'user-1', name: 'Casey Admin', email: 'casey@example.com', mfaEnabled: false }} />);
+    fireEvent.change(screen.getByTestId('avatar-file-input'), { target: { files: [new File(['x'], 'avatar.png', { type: 'image/png' })] } });
+    await waitFor(() => expect(resolveStage).toBeDefined());
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    await act(async () => resolveStage(makeJsonResponse({ draftId, intent: 'replace', previewUrl: `/draft/${draftId}` })));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Failed to remove avatar');
+    expect(screen.getByTestId('avatar-dropzone').querySelector('img')?.getAttribute('src')).toBe('blob:fake');
+    deleteFails = false;
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Undo' })).toBeNull());
+    expect(fetchWithAuthMock.mock.calls.filter(([url]) => String(url) === `/users/me/avatar-draft/${draftId}`)).toHaveLength(2);
+    expect(updateUserMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps the latest successful upload when a rapid replacement fails', async () => {
+    const oldId = '55555555-5555-4555-8555-555555555555';
+    const newId = '66666666-6666-4666-8666-666666666666';
+    let resolveStage!: (response: Response) => void;
+    let stages = 0;
+    fetchWithAuthMock.mockImplementation(async (url, init) => {
+      if (String(url) === '/auth/passkeys') return makeJsonResponse({ passkeys: [] });
+      if (String(url) === '/users/me' && init?.method === 'PATCH') return makeJsonResponse({ name: 'Casey Admin', avatarUrl: `/avatar?v=${newId}` });
+      if (String(url) === '/users/me') return makeJsonResponse({ avatarDraft: { draftId: oldId, intent: 'replace', previewUrl: `/draft/${oldId}` } });
+      if (String(url) === '/users/me/avatar-draft') {
+        if (++stages === 1) return new Promise<Response>((resolve) => { resolveStage = resolve; });
+        return makeJsonResponse({ error: 'Upload failed' }, false);
+      }
+      return undefined as unknown as Response;
+    });
+    render(<ProfilePage initialUser={{ id: 'user-1', name: 'Casey Admin', email: 'casey@example.com', mfaEnabled: false }} />);
+    await screen.findByRole('button', { name: 'Undo' });
+    const input = screen.getByTestId('avatar-file-input');
+    fireEvent.change(input, { target: { files: [new File(['b'], 'b.png', { type: 'image/png' })] } });
+    await waitFor(() => expect(resolveStage).toBeDefined());
+    fireEvent.change(input, { target: { files: [new File(['c'], 'c.png', { type: 'image/png' })] } });
+    await act(async () => resolveStage(makeJsonResponse({ draftId: newId, intent: 'replace', previewUrl: `/draft/${newId}` })));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Upload failed');
+    expect(screen.getByText('b.png')).toBeTruthy();
+    expect(fetchWithAuthMock.mock.calls.some(([, init]) => init?.method === 'DELETE')).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    await screen.findByText('Profile updated successfully');
+    expect(fetchWithAuthMock).toHaveBeenCalledWith('/users/me', expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ name: 'Casey Admin', avatarDraftId: newId }) }));
+  });
+
+  it('blocks selection, removal, Undo and drop while Save changes is pending', async () => {
+    const draftId = '66666666-6666-4666-8666-666666666666';
+    let resolveSave!: (response: Response) => void;
+    fetchWithAuthMock.mockImplementation(async (url, init) => {
+      if (String(url) === '/auth/passkeys') return makeJsonResponse({ passkeys: [] });
+      if (String(url) === '/users/me' && init?.method === 'PATCH') return new Promise<Response>((resolve) => { resolveSave = resolve; });
+      if (String(url) === '/users/me') return makeJsonResponse({ avatarDraft: { draftId, intent: 'replace', previewUrl: `/draft/${draftId}` } });
+      return undefined as unknown as Response;
+    });
+    render(<ProfilePage initialUser={{ id: 'user-1', name: 'Casey Admin', email: 'casey@example.com', mfaEnabled: false }} />);
+    await screen.findByRole('button', { name: 'Undo' });
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => expect(resolveSave).toBeDefined());
+    for (const name of ['Change picture', 'Remove', 'Undo']) expect(screen.getByRole('button', { name })).toBeDisabled();
+    const file = new File(['b'], 'b.png', { type: 'image/png' });
+    fireEvent.change(screen.getByTestId('avatar-file-input'), { target: { files: [file] } });
+    fireEvent.drop(screen.getByTestId('avatar-dropzone'), { dataTransfer: { files: [file] } });
+    expect(fetchWithAuthMock.mock.calls.some(([url]) => String(url) === '/users/me/avatar-draft')).toBe(false);
+    await act(async () => resolveSave(makeJsonResponse({ name: 'Casey Admin', avatarUrl: `/avatar?v=${draftId}` })));
+    await screen.findByText('Profile updated successfully');
+    expect(screen.queryByRole('button', { name: 'Undo' })).toBeNull();
+  });
+
+  it('shows stale draft conflicts without clearing edits or publishing the avatar', async () => {
+    const draftId = '66666666-6666-4666-8666-666666666666';
+    fetchWithAuthMock.mockImplementation(async (url, init) => {
+      if (String(url) === '/auth/passkeys') return makeJsonResponse({ passkeys: [] });
+      if (String(url) === '/users/me' && init?.method === 'PATCH') return makeJsonResponse({ error: 'Choose a picture again.' }, false, 409);
+      if (String(url) === '/users/me') return makeJsonResponse({ avatarDraft: { draftId, intent: 'replace', previewUrl: `/draft/${draftId}` } });
+      return undefined as unknown as Response;
+    });
+    render(<ProfilePage initialUser={{ id: 'user-1', name: 'Casey Admin', email: 'casey@example.com', mfaEnabled: false }} />);
+    await screen.findByRole('button', { name: 'Undo' });
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Changed name' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    expect(await screen.findByText('Choose a picture again.')).toBeTruthy();
+    expect(screen.getByLabelText('Name')).toHaveValue('Changed name');
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeTruthy();
+    expect(updateUserMock).not.toHaveBeenCalled();
+  });
+
+  it('shows restored preview failures and prevents publishing an unseen draft', async () => {
+    const draftId = '66666666-6666-4666-8666-666666666666';
+    avatarBlobUrlMock.mockReturnValue(null);
+    fetchWithAuthMock.mockImplementation(async (url) => {
+      if (String(url) === '/auth/passkeys') return makeJsonResponse({ passkeys: [] });
+      if (String(url) === '/users/me') return makeJsonResponse({ avatarDraft: { draftId, intent: 'replace', previewUrl: `/draft/${draftId}` } });
+      return undefined as unknown as Response;
+    });
+    render(<ProfilePage initialUser={{ id: 'user-1', name: 'Casey Admin', email: 'casey@example.com', mfaEnabled: false }} />);
+    await screen.findByRole('button', { name: 'Undo' });
+    const onError = avatarBlobUrlMock.mock.calls.find(([url]) => url === `/draft/${draftId}`)?.[1];
+    expect(onError).toBeDefined();
+    act(() => onError?.());
+    expect(screen.getByRole('alert')).toHaveTextContent('Could not load picture preview');
+    expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled();
     expect(updateUserMock).not.toHaveBeenCalled();
   });
 });
