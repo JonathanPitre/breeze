@@ -123,8 +123,9 @@ test('real Invoke-WebRequest receives the exact bytes and never follows redirect
       response.end(fixture);
     } else {
       receivedHeaders = request.headers;
-      response.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-      response.end(fixture);
+      const scriptRequest = request.headers['user-agent'] === 'BreezeInstaller/1.0';
+      response.writeHead(200, { 'Content-Type': scriptRequest ? 'text/plain; charset=utf-8' : 'text/html; charset=utf-8' });
+      response.end(scriptRequest ? fixture : '<!doctype html><title>browser fallback</title>');
     }
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -133,6 +134,7 @@ test('real Invoke-WebRequest receives the exact bytes and never follows redirect
     const success = await runBootstrap({ url: `${url}/api/v1/agents/install.ps1`, live: true });
     assert.equal(success.code, 0, success.stderr);
     assert.equal(JSON.parse(success.stdout).message, 'verified café');
+    assert.equal(receivedHeaders['user-agent'], 'BreezeInstaller/1.0');
     assert.match(receivedHeaders['accept-encoding'], /(?:^|,)\s*identity(?:,|$)/);
     assert.equal(receivedHeaders.authorization, undefined);
     assert.equal(receivedHeaders.cookie, undefined);
