@@ -7,6 +7,7 @@ import { db, runOutsideDbContext, withDbTransaction, withSystemDbAccessContext }
 import { createHash, randomBytes } from 'crypto';
 import { getRedis } from '../../services/redis';
 import { onboardingServerUrl } from '../../services/onboardingServerUrl';
+import { getWindowsInstaller } from '../../services/windowsInstaller';
 import { invalidateOrgDeviceCount } from '../../services/agentOrgRateLimit';
 import { CLEARED_AGENT_CREDENTIALS } from '../../services/agentCredentialHashes';
 import { reliabilityProvisionalSql } from '../../services/reliabilityBaselineQueries';
@@ -1055,8 +1056,10 @@ coreRoutes.post(
     const secretRequired = configuredSecret !== null;
     const serverUrl = onboardingServerUrl();
 
+    c.header('Cache-Control', 'no-store');
     return c.json({
       token: key,
+      windowsInstaller: getWindowsInstaller(serverUrl)?.integrity ?? null,
       maxUsage,
       // #7035: echo the bound site so the UI can say where devices will land.
       siteId,

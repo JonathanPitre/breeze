@@ -1,3 +1,5 @@
+import type { WindowsInstallerIntegrity } from '@breeze/shared';
+
 export interface InstallCommandOptions {
   /** Breeze API origin, e.g. https://eu.2breeze.app */
   apiUrl: string;
@@ -5,21 +7,16 @@ export interface InstallCommandOptions {
   token: string;
   /** Optional org enrollment secret */
   enrollmentSecret?: string;
+  /** URL and SHA-256 from authenticated onboarding. Null disables Windows commands. */
+  windowsInstaller: WindowsInstallerIntegrity | null;
 }
 
 export interface InstallCommands {
-  windows: string;
+  windows: string | null;
   macos: string;
   linux: string;
 }
 
-/**
- * Builds the copy-paste agent install commands shown in the Add Device modal
- * and the setup wizard.
- *
- * Platform commands fetch an installer from the configured server and verify
- * its response before running it.
- */
 export function buildInstallCommands(opts: InstallCommandOptions): InstallCommands {
   const apiUrl = opts.apiUrl.replace(/\/+$/, '');
   const { token, enrollmentSecret } = opts;
@@ -34,13 +31,23 @@ export function buildInstallCommands(opts: InstallCommandOptions): InstallComman
     `{ echo "[ERROR] Could not fetch the Breeze installer from ${apiUrl} — verify this machine has network access to your Breeze server." >&2; false; }; } && ` +
     `sudo bash "$f" --server "${apiUrl}" --token "${token}"${unixSecretFlag}`;
 
-  const winSecretFlag = enrollmentSecret ? ` -EnrollmentSecret "${enrollmentSecret}"` : '';
-  const windows =
+  const installer = opts.windowsInstaller;
+  const winSecretFlag = enrollmentSecret ? ` -EnrollmentSecret ${powershellLiteral(enrollmentSecret)}` : '';
+  const windows = installer ?
     `& { $ErrorActionPreference='Stop'; ` +
     `[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12; ` +
-    `$s=irm "${apiUrl}/api/v1/agents/install.ps1" -UseBasicParsing -TimeoutSec 10 -ErrorAction Stop; ` +
-    `if($s -notmatch '^\\s*function\\s+Install-BreezeAgent\\b'){throw "Breeze: invalid installer script response"}; ` +
-    `iex $s; Install-BreezeAgent -Token "${token}"${winSecretFlag} }`;
+    `$r=iwr ${powershellLiteral(installer.url)} -UseBasicParsing -TimeoutSec 10 -MaximumRedirection 0 -Headers @{'Accept-Encoding'='identity'}; ` +
+    `if($r.StatusCode -ne 200){throw 'Breeze: installer download did not return HTTP 200'}; ` +
+    `$r.RawContentStream.Position=0; ` +
+    `if((Get-FileHash -Algorithm SHA256 -InputStream $r.RawContentStream).Hash -ne ${powershellLiteral(installer.sha256)})` +
+    `{throw 'Breeze: installer checksum mismatch. Generate a new command in Add Device'}; ` +
+    `iex ([Text.UTF8Encoding]::new($false,$true).GetString($r.RawContentStream.ToArray())); ` +
+    `Install-BreezeAgent -Token ${powershellLiteral(token)}${winSecretFlag} }`
+    : null;
 
   return { windows, macos: unixCmd, linux: unixCmd };
+}
+
+function powershellLiteral(value: string): string {
+  return `'${value.replace(/['\u2018-\u201b]/g, (quote) => quote + quote)}'`;
 }

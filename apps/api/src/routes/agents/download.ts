@@ -9,8 +9,7 @@ import { getBinarySource, getGithubReleaseVersion, getGithubAgentUrl, getGithubU
 import { getPromotedComponentVersion, getRegisteredComponentVersion, type PromotedComponent } from '../../services/promotedAgentVersion';
 import { fetchVerifiedMacosPkg, fetchVerifiedHelperInstaller } from '../../services/installerBuilder';
 import { getTrustedClientIp, rateLimitIpKey } from '../../services/clientIp';
-import { onboardingServerUrl } from '../../services/onboardingServerUrl';
-import { generateWindowsInstallScript } from './windowsInstallScript';
+import { getWindowsInstaller } from '../../services/windowsInstaller';
 
 export const downloadRoutes = new Hono();
 
@@ -739,14 +738,6 @@ function resolveInstallScriptServerUrl(requestUrl: string): string | null {
   return new URL(requestUrl).origin.replace(/\/$/, '');
 }
 
-function resolveWindowsInstallScriptServerUrl(requestUrl: string): string | null {
-  if (process.env.PUBLIC_API_URL?.trim() || process.env.API_URL?.trim()) {
-    return onboardingServerUrl() ?? null;
-  }
-  if (process.env.NODE_ENV === 'production') return null;
-  return new URL(requestUrl).origin.replace(/\/+$/, '');
-}
-
 downloadRoutes.get('/install.sh', async (c) => {
   const rateLimited = await enforcePublicAgentDownloadRateLimit(c, 'install-script-download');
   if (rateLimited) return rateLimited;
@@ -782,9 +773,9 @@ downloadRoutes.get('/install.ps1', async (c) => {
     });
   }
 
-  const serverUrl = resolveWindowsInstallScriptServerUrl(c.req.url);
-  if (!serverUrl) {
-    return new Response('Installer script unavailable: server URL is not configured', {
+  const installer = getWindowsInstaller();
+  if (!installer) {
+    return new Response('Installer script unavailable: a valid HTTPS server URL is required', {
       status: 503,
       headers: {
         'Content-Type': 'text/plain; charset=utf-8',
@@ -793,11 +784,11 @@ downloadRoutes.get('/install.ps1', async (c) => {
     });
   }
 
-  return new Response(generateWindowsInstallScript({ serverUrl }), {
+  return new Response(installer.body, {
     status: 200,
     headers: {
       'Content-Type': 'text/plain; charset=utf-8',
-      'Cache-Control': 'no-cache',
+      'Cache-Control': 'no-store, no-transform',
     },
   });
 });

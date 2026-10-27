@@ -334,6 +334,7 @@ describe('agent routes', () => {
 
   describe('GET /agents/install.sh', () => {
     it('serves public install and uninstall scripts without agent-token auth', async () => {
+      vi.stubEnv('PUBLIC_API_URL', 'https://rmm.example.com');
       const installRes = await app.request('/agents/install.sh');
       const windowsInstallRes = await app.request('/agents/install.ps1');
       const uninstallRes = await app.request('/agents/uninstall.sh');

@@ -67,6 +67,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { downloadRoutes } from './download';
+import { getWindowsInstaller } from '../../services/windowsInstaller';
 import { getBinarySource, getGithubReleaseVersion, getGithubAgentUrl, getGithubHelperUrl, getGithubUserHelperUrl, getGithubWatchdogUrl, getGithubBackupUrl } from '../../services/binarySource';
 import { isS3Configured, getPresignedUrl, getObjectStream } from '../../services/s3Storage';
 import { getPromotedComponentVersion, getRegisteredComponentVersion } from '../../services/promotedAgentVersion';
@@ -1277,11 +1278,14 @@ describe('GET /install.ps1 — generated Windows installer', () => {
 
     try {
       const res = await downloadRoutes.request('/install.ps1');
-      const script = await res.text();
+      const bytes = await res.arrayBuffer();
+      const script = new TextDecoder().decode(bytes);
 
       expect(res.status).toBe(200);
       expect(res.headers.get('content-type')).toBe('text/plain; charset=utf-8');
-      expect(res.headers.get('cache-control')).toBe('no-cache');
+      expect(res.headers.get('cache-control')).toBe('no-store, no-transform');
+      expect(createHash('sha256').update(new Uint8Array(bytes)).digest('hex'))
+        .toBe(getWindowsInstaller('https://rmm.example.com')?.integrity.sha256);
       expect(script).toMatch(/^function Install-BreezeAgent\s*\{/);
       expect(script).toContain('param(');
       expect(script).toContain('[string]$Token');
@@ -1320,8 +1324,8 @@ describe('GET /install.ps1 — generated Windows installer', () => {
   });
 
   it('keeps the Windows install safeguards and their failure messages in the generated function', async () => {
-    const originalBreezeServer = process.env.BREEZE_SERVER;
-    process.env.BREEZE_SERVER = 'https://rmm.example.com';
+    const originalPublicApiUrl = process.env.PUBLIC_API_URL;
+    process.env.PUBLIC_API_URL = 'https://rmm.example.com';
 
     try {
       const res = await downloadRoutes.request('/install.ps1');
@@ -1363,14 +1367,14 @@ describe('GET /install.ps1 — generated Windows installer', () => {
       expect(script).not.toMatch(/\[string\]\$Server\b/);
       expect(script).not.toContain('$env:BREEZE_ENROLL_TOKEN');
     } finally {
-      if (originalBreezeServer === undefined) delete process.env.BREEZE_SERVER;
-      else process.env.BREEZE_SERVER = originalBreezeServer;
+      if (originalPublicApiUrl === undefined) delete process.env.PUBLIC_API_URL;
+      else process.env.PUBLIC_API_URL = originalPublicApiUrl;
     }
   });
 
   it('uses its own public-download bucket and does not cache rate-limit errors', async () => {
-    const originalBreezeServer = process.env.BREEZE_SERVER;
-    process.env.BREEZE_SERVER = 'https://rmm.example.com';
+    const originalPublicApiUrl = process.env.PUBLIC_API_URL;
+    process.env.PUBLIC_API_URL = 'https://rmm.example.com';
 
     try {
       const unix = await downloadRoutes.request('/install.sh');
@@ -1388,8 +1392,8 @@ describe('GET /install.ps1 — generated Windows installer', () => {
       expect(limited.status).toBe(429);
       expect(limited.headers.get('cache-control')).toBe('no-store');
     } finally {
-      if (originalBreezeServer === undefined) delete process.env.BREEZE_SERVER;
-      else process.env.BREEZE_SERVER = originalBreezeServer;
+      if (originalPublicApiUrl === undefined) delete process.env.PUBLIC_API_URL;
+      else process.env.PUBLIC_API_URL = originalPublicApiUrl;
     }
   });
 
