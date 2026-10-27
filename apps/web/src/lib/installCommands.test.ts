@@ -64,7 +64,7 @@ describe('buildInstallCommands', () => {
       const fetchEnd = windows.indexOf(';', fetchStart);
       const fetchRequest = windows.slice(fetchStart, fetchEnd);
 
-      expect(windows.startsWith('[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12;')).toBe(true);
+      expect(windows.startsWith("& { $ErrorActionPreference='Stop'; [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12;")).toBe(true);
       expect(fetchRequest).toContain('irm "https://rmm.example.com/api/v1/agents/install.ps1" -UseBasicParsing -TimeoutSec 10');
       expect(fetchRequest).not.toContain(base.token);
       expect(fetchRequest).not.toContain('token=');
@@ -73,6 +73,7 @@ describe('buildInstallCommands', () => {
       expect(windows.indexOf('-notmatch')).toBeGreaterThan(fetchStart);
       expect(windows.indexOf('-notmatch')).toBeLessThan(windows.indexOf('iex $s'));
       expect(windows.indexOf('iex $s')).toBeLessThan(windows.indexOf('Install-BreezeAgent -Token'));
+      expect(windows.endsWith(' }')).toBe(true);
       expect(windows).toContain(`Install-BreezeAgent -Token "${base.token}"`);
       expect(windows).not.toContain('Authorization:');
       expect(windows).not.toContain('Get-FileHash');

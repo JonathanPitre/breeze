@@ -36,10 +36,11 @@ export function buildInstallCommands(opts: InstallCommandOptions): InstallComman
 
   const winSecretFlag = enrollmentSecret ? ` -EnrollmentSecret "${enrollmentSecret}"` : '';
   const windows =
+    `& { $ErrorActionPreference='Stop'; ` +
     `[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12; ` +
     `$s=irm "${apiUrl}/api/v1/agents/install.ps1" -UseBasicParsing -TimeoutSec 10 -ErrorAction Stop; ` +
     `if($s -notmatch '^\\s*function\\s+Install-BreezeAgent\\b'){throw "Breeze: invalid installer script response"}; ` +
-    `iex $s; Install-BreezeAgent -Token "${token}"${winSecretFlag}`;
+    `iex $s; Install-BreezeAgent -Token "${token}"${winSecretFlag} }`;
 
   return { windows, macos: unixCmd, linux: unixCmd };
 }
