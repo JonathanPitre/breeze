@@ -298,6 +298,27 @@ export const TOOL_CAPABILITY: Readonly<Record<string, AgentCapabilityId>> = {
   bootstrap_homebrew: 'patching_software',
   manage_fleet_findings: 'alerts_monitoring',
   manage_custom_fields: 'automations_reports',
+  // Full-control W13 (#6783): device inventory reads and records sit beside get_device_details
+  // (automations_reports).
+  get_device_events: 'automations_reports',
+  get_device_health: 'automations_reports',
+  get_process_samples: 'automations_reports',
+  get_management_posture: 'automations_reports',
+  manage_device_function: 'automations_reports',
+  manage_device_links: 'automations_reports',
+  manage_manual_assets: 'automations_reports',
+  manage_device_warranty: 'automations_reports',
+  // W13 PR B (#6783): the live event-log read beside manage_processes; tenant variables beside the script tools;
+  // support sessions beside the remote-access tools.
+  browse_device_event_log: 'scripts_commands',
+  manage_tenant_variables: 'scripts_commands',
+  manage_support_sessions: 'remote_access',
+  // W14 (#6784): billing lifecycle tools beside the contract / invoice tools.
+  manage_billing_profiles: 'business',
+  manage_billing_settings: 'business',
+  manage_contract_templates: 'business',
+  manage_contract_documents: 'business',
+  get_device_billing: 'business',
   get_user_risk_scores: 'security_response',
   get_user_risk_detail: 'security_response',
   assign_security_training: 'security_response',
