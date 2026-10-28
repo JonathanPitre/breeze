@@ -129,6 +129,9 @@ const VISIBILITY_MODULES: Record<string, string> = {
   'services/portal/performanceReadModel.ts': 'read model: portal performance metrics',
   'services/portal/softwareInventoryReadModel.ts': 'read model: portal software inventory',
   'services/softwareInventoryReads.ts': 'read model: technician software inventory list / name search / per-title devices (lifted from routes/softwareInventory.ts); excludes ephemeral and parked devices',
+  'services/aiToolsSupportSessions.ts': 'W13 PR B (#6783) AI read of the caller partner\'s Quick Support sessions (ephemeral devices in the hidden Quick Support org, never a parked device); end goes through endSupportSession; selects no fan-out targets',
+  'services/aiToolsDeviceInventory.ts': 'W13 (#6783) AI reads: management-posture aggregates and the expiring-warranty list, both under the caller\'s org + site + exact-device scope and notParkedDeviceCondition; per-device reads go through the central device gate; selects no targets',
+  'services/deviceLinkGroupOps.ts': 'read model: device link groups (#2138) list / get / per-device lookup plus link-group membership writes, all by explicit device id (lifted from routes/devices/links.ts); no background selection',
   'services/portal/patchDetailReadModel.ts': 'read model: portal patch detail',
   'services/portal/vulnerabilityDetailReadModel.ts': 'read model: portal vulnerability detail',
   'services/portal/securityReadModel.ts': 'read model: portal security',
@@ -143,6 +146,10 @@ const VISIBILITY_MODULES: Record<string, string> = {
   'services/backupProviders/mapping.ts': 'vendor-customer to org mapping: which org a backup customer is shown under; the holding org and Quick Support are never candidates',
   'services/edrProviders/mapping.ts': 'vendor-tenant to org mapping: the holding org and Quick Support are never candidates',
   'services/flows/ownedReferences.ts': 'validation: checks that device ids named literally in a flow draft belong to the flow owner org (#5218); selects no targets and dispatches nothing',
+  'services/flows/builtins/fleetTargets.ts': "org-pinned (#5221 W06): target selection goes through automationRuntime's resolveAutomationTargetsDetailed (a FANOUT_MODULES entry) with the run org as the only owner org; its own query only re-reads those ids, or an explicit/earlier-step list, inside the RUN org — a flow run never runs in the holding org (partnerFanoutOrgs), so a parked device never matches",
+  'services/flows/conversion/context.ts': "conversion preview (#5221 W06): counts a Job's CURRENT target set and its OS types through automationRuntime's resolveAutomationTargetsDetailed (a FANOUT_MODULES entry, parked/holding-org guarded); reads only the OS of those ids and dispatches nothing",
+  'services/flows/builtins/createAlert.ts': "org-pinned (#5221 W06): one existence check (id, org_id = run org) for the device a create_alert step names; selects no targets, and a flow run never runs in the holding org",
+  'services/scriptFleetDispatchStore.ts': "org-pinned (#5221 W06): locks ONE device of the already-checked fleet set by (id, org_id = run org) before dispatch; selects no targets, and dispatchScriptToDevice refuses a parked device (device_pending_assignment)",
   'services/timeSuggestionService.ts': 'billing: time suggestions',
   'jobs/patchComplianceReportWorker.ts': 'report: patch compliance summary for the requesting org',
   'services/patchOutstandingDevices.ts': 'listing: devices that still need a patch, shown on the approval list (#8728); excludes parked and Quick Support devices like the compliance view',
@@ -198,6 +205,7 @@ function exemptByPattern(file: string): boolean {
 
 /** Cannot reach a parked device, or must (removal and retention). */
 const EXEMPT: Record<string, string> = {
+  'services/manualAssetOps.ts': 'manual (non-networked) inventory CRUD (#4622, lifted from routes/devices/manual.ts): reads agent devices only to resolve the ONE device id a link request names (same-org + same-site check); selects no fan-out targets and runs nothing',
   'services/aiToolsCustomFields.ts': 'manage_custom_fields set_values (W12, #6782): re-reads the custom-field projection of the ONE device the central deviceArgs gate and verifyDeviceAccess already resolved (verifyDeviceAccess excludes parked devices); selects no targets',
   'services/localVaultUpdate.ts': 'site-locked vault update (W03-D12, #6757; lifted from routes/backup/vault.ts): row-locks the ONE device that owns a vault the caller already resolved, inside the caller\'s sites, then updates that vault; selects no targets, and the follow-up vault_configure to a parked device is refused by command delivery',
   'services/securityScanStart.ts': 'single-device Scan now (#6263 W05-11, lifted from routes/security/scans.ts): reads the ONE device id the caller named under its own RLS; selects no targets. queueCommand refuses a parked device',

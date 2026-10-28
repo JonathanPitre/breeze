@@ -124,6 +124,12 @@ import { registerDeviceSoftwareTools } from './aiToolsDeviceSoftware';
 import { registerSoftwareInventoryTools } from './aiToolsSoftwareInventory';
 import { registerFleetFindingTools } from './aiToolsFleetFindings';
 import { registerCustomFieldTools } from './aiToolsCustomFields';
+import { registerDeviceInventoryTools } from './aiToolsDeviceInventory';
+import { registerDeviceLinkTools } from './aiToolsDeviceLinks';
+import { registerManualAssetTools } from './aiToolsManualAssets';
+import { registerDeviceEventLogTools } from './aiToolsDeviceEventLog';
+import { registerTenantVariableTools } from './aiToolsTenantVariables';
+import { registerSupportSessionTools } from './aiToolsSupportSessions';
 import { registerTicketConfigTools } from './aiToolsTicketConfig';
 import { registerTicketChecklistTemplateTools } from './aiToolsTicketChecklistTemplates';
 import { registerTicketInboxTools } from './aiToolsTicketInbox';
@@ -448,6 +454,14 @@ registerDeviceSoftwareTools(aiTools);
 registerSoftwareInventoryTools(aiTools);
 registerFleetFindingTools(aiTools);
 registerCustomFieldTools(aiTools);
+// Full-control W13 (#6783, PR A): device inventory reads and per-device records.
+registerDeviceInventoryTools(aiTools);
+registerDeviceLinkTools(aiTools);
+registerManualAssetTools(aiTools);
+// Full-control W13 (#6783, PR B): live event-log browse, tenant variables, Quick Support sessions.
+registerDeviceEventLogTools(aiTools);
+registerTenantVariableTools(aiTools);
+registerSupportSessionTools(aiTools);
 registerMessagingTools(aiTools);
 registerCatalogTools(aiTools);
 registerBillingTools(aiTools);

@@ -270,6 +270,18 @@ export const TIER_DEFINITIONS: TierDefinition[] = [
       { name: 'manage_software_deployments (list/get/summary/results)', description: 'View software deployments and per-device results', category: 'Fleet Operations' },
       { name: 'get_device_software', description: 'Installed software on one device', category: 'Fleet Operations' },
       { name: 'manage_software_inventory (list/names/devices)', description: 'Software seen across the fleet, with allow/block status and the devices that have it', category: 'Fleet Operations' },
+      // Full-control W13 (#6783): device inventory reads. Device-reported text is untrusted data.
+      { name: 'get_device_events', description: 'Activity timeline for one device: what ran, changed or failed, and who or what did it (no emails or IP addresses)', category: 'Devices & Hardware' },
+      { name: 'get_device_health', description: "The Breeze agent's latest health report for one device", category: 'Devices & Hardware' },
+      { name: 'get_process_samples', description: 'A recorded top-process snapshot for one device at a past time', category: 'Devices & Hardware' },
+      { name: 'get_management_posture', description: 'Other management products (RMM, antivirus, backup, MDM) detected across the fleet', category: 'Devices & Hardware' },
+      { name: 'manage_device_function (get)', description: "One device's function (domain controller, file server, ...)", category: 'Devices & Hardware' },
+      { name: 'manage_device_links (list/get/for_device)', description: 'Linked device profiles: multi-boot records of one machine, or a VM host and its guests', category: 'Devices & Hardware' },
+      { name: 'manage_manual_assets (list)', description: 'Hand-entered inventory without an agent (spare laptops, phones, printers)', category: 'Devices & Hardware' },
+      { name: 'manage_device_warranty (get/expiring)', description: "One device's warranty, or devices whose warranty ends soon", category: 'Devices & Hardware' },
+      // Full-control W13 PR B (#6783): secret tenant-variable values are never shown.
+      { name: 'manage_tenant_variables (list)', description: 'Tenant variables scripts receive as {{var.key}} (secret values are never shown)', category: 'Scripts & Automation' },
+      { name: 'manage_support_sessions (list/get)', description: 'Quick Support sessions and whether their temporary client is online', category: 'Remote Access & Control' },
       // Wisp memory (W03 #9909): offered only when Wisp is on, and only under a delegation grant.
       { name: 'recall', description: 'Recall Wisp memory inside the delegation grant', category: 'AI Governance' },
       // Wisp concerns (W05a #9911): offered only when Wisp is on, and only under a delegation grant.
@@ -398,6 +410,11 @@ export const TIER_DEFINITIONS: TierDefinition[] = [
       { name: 'manage_software_deployments (cancel)', description: 'Cancel the pending installs of a software deployment', category: 'Fleet Operations' },
       { name: 'manage_fleet_findings (acknowledge/dismiss/reopen)', description: 'Acknowledge, dismiss or reopen a fleet finding', category: 'Devices & Hardware' },
       { name: 'manage_custom_fields (create_definition/update_definition)', description: 'Create or edit a custom field definition (a partner-wide one needs approval; not offered to AI agents)', category: 'Other' },
+      // Full-control W13 (#6783): reversible, tenant-internal device records (writes need your MFA session).
+      { name: 'manage_device_links (create/update/dissolve)', description: 'Link device records as boot profiles of one machine or a VM host and its guests, or unlink them (each device keeps its data)', category: 'Devices & Hardware' },
+      { name: 'manage_manual_assets (create/update/link/unlink)', description: 'Add, edit, retire or link a hand-entered inventory row', category: 'Devices & Hardware' },
+      // Full-control W13 PR B (#6783): live device read (needs your MFA session).
+      { name: 'browse_device_event_log (list_logs)', description: "List a Windows device's event logs, read live from its agent", category: 'Services & Processes' },
       // Billing (full-control W02, #6756): quote drafting and new catalog
       // items. 'Billing' because these are the business capability, not tickets.
       { name: 'manage_quotes (create_draft/update/delete_draft/add_block/update_block/delete_block/reorder_blocks/add_manual_line/add_catalog_line/update_line/remove_line/move_line/reorder_lines)', description: 'Draft quotes: blocks and lines on a quote that has not been sent', category: 'Billing' },
@@ -545,6 +562,15 @@ export const TIER_DEFINITIONS: TierDefinition[] = [
       { name: 'bootstrap_homebrew', description: 'Install Homebrew on one Mac (not offered to AI agents)', category: 'Fleet Operations' },
       { name: 'manage_software_inventory (approve/deny/clear)', description: 'Add software to, or remove it from, the organization\'s default allowlist or blocklist', category: 'Fleet Operations' },
       { name: 'manage_custom_fields (delete_definition/set_values)', description: 'Delete a custom field (removes every device\'s value) or set values on a device', category: 'Other' },
+      // Full-control W13 (#6783): function changes which devices dynamic groups select; a manual-asset delete is
+      // permanent; a warranty refresh sends the serial number to the manufacturer.
+      { name: 'manage_device_function (set)', description: "Set or clear a device's function, which dynamic groups can target (not offered to AI agents)", category: 'Devices & Hardware' },
+      { name: 'manage_manual_assets (delete)', description: 'Permanently delete a hand-entered inventory row (retire it to keep the record)', category: 'Devices & Hardware' },
+      { name: 'manage_device_warranty (refresh)', description: "Re-check one device's warranty with its manufacturer (sends the serial number)", category: 'Devices & Hardware' },
+      // Full-control W13 PR B (#6783).
+      { name: 'browse_device_event_log (query/get_event)', description: 'Read event text from a device\'s live event logs (Security and Application logs can hold credentials)', category: 'Services & Processes' },
+      { name: 'manage_tenant_variables (create/update/delete)', description: 'Change the values scripts receive on every device (never secrets or partner-wide variables; not offered to AI agents)', category: 'Scripts & Automation' },
+      { name: 'manage_support_sessions (end)', description: 'End a Quick Support session and remove its temporary client', category: 'Remote Access & Control' },
       // Endpoint messaging (#8742 W02): customer-visible text, always approved.
       { name: 'send_endpoint_message (send)', description: 'Send a message to the person at one or more devices', category: 'Ticketing' },
       // AI Governance (P2-5, #4192)
@@ -779,6 +805,18 @@ export const RATE_LIMIT_CONFIGS: RateLimitConfig[] = [
   { toolName: 'bootstrap_homebrew', tier: 3, permission: 'devices.execute', category: 'Fleet Operations' },
   { toolName: 'manage_fleet_findings', tier: 2, permission: 'devices.write', category: 'Devices & Hardware' },
   { toolName: 'manage_custom_fields', tier: 2, permission: 'devices.write', category: 'Other' },
+  // Full-control W13 (#6783): `tier` is the registry tier; the per-action classes are in TIER_DEFINITIONS.
+  { toolName: 'get_device_events', tier: 1, permission: 'devices.read', category: 'Devices & Hardware' },
+  { toolName: 'get_device_health', tier: 1, permission: 'devices.read', category: 'Devices & Hardware' },
+  { toolName: 'get_process_samples', tier: 1, permission: 'devices.read', category: 'Devices & Hardware' },
+  { toolName: 'get_management_posture', tier: 1, permission: 'devices.read', category: 'Devices & Hardware' },
+  { toolName: 'manage_device_function', tier: 1, permission: 'devices.read / devices.write', category: 'Devices & Hardware' },
+  { toolName: 'manage_device_links', tier: 1, permission: 'devices.read / devices.write / devices.delete', category: 'Devices & Hardware' },
+  { toolName: 'manage_manual_assets', tier: 1, permission: 'devices.read / devices.write / devices.delete', category: 'Devices & Hardware' },
+  { toolName: 'manage_device_warranty', tier: 1, permission: 'devices.read / devices.write', category: 'Devices & Hardware' },
+  { toolName: 'browse_device_event_log', tier: 1, permission: 'devices.execute', category: 'Services & Processes' },
+  { toolName: 'manage_tenant_variables', tier: 1, permission: 'variables.read / variables.manage', category: 'Scripts & Automation' },
+  { toolName: 'manage_support_sessions', tier: 1, permission: 'remote.access', category: 'Remote Access & Control' },
 ];
 
 // ── RBAC mappings (flat reference, not rendered in grouped UI) ───────────────
@@ -880,6 +918,24 @@ export const RBAC_MAPPINGS: Record<string, string | Record<string, string>> = {
   },
   manage_fleet_findings: 'devices.write',
   manage_custom_fields: 'devices.write',
+  // Full-control W13 (#6783): every write also needs your MFA session.
+  get_device_events: 'devices.read',
+  get_device_health: 'devices.read',
+  get_process_samples: 'devices.read',
+  get_management_posture: 'devices.read',
+  manage_device_function: { get: 'devices.read', set: 'devices.write' },
+  manage_device_links: {
+    list: 'devices.read', get: 'devices.read', for_device: 'devices.read',
+    create: 'devices.write', update: 'devices.write', dissolve: 'devices.delete',
+  },
+  manage_manual_assets: {
+    list: 'devices.read', create: 'devices.write', update: 'devices.write', delete: 'devices.delete',
+    link: 'devices.write', unlink: 'devices.write',
+  },
+  manage_device_warranty: { get: 'devices.read', expiring: 'devices.read', refresh: 'devices.write' },
+  browse_device_event_log: 'devices.execute',
+  manage_tenant_variables: { list: 'variables.read', create: 'variables.manage', update: 'variables.manage', delete: 'variables.manage' },
+  manage_support_sessions: 'remote.access',
   analyze_fleet_metrics: 'devices.read',
   // Stored data needs read; the live-read input flag needs execute.
   analyze_boot_performance: { stored: 'devices.read', triggerCollection: 'devices.execute' },
