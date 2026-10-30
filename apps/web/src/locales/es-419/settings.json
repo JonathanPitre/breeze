@@ -217,6 +217,7 @@
       "enrollment-keys_write": "Generar claves de inscripción de dispositivos. Requiere una fecha de vencimiento y al menos una IP de origen o CIDR.",
       "contracts_write": "Leer, crear y editar contratos y líneas de contrato, y eliminar líneas. No puede activar, pausar ni cancelar.",
       "tickets_write": "Crear, actualizar, asignar, cambiar el estado y comentar tickets. No puede eliminar ni mover tickets.",
+      "alerts_write": "Reconocer y resolver alertas en todas las organizaciones a las que puede acceder la entidad de servicio. No permite leer los detalles de las alertas (alerts:read), suprimirlas, descartarlas ni eliminarlas.",
       "ai_read": "Conectarse al endpoint de MCP y usar herramientas de solo lectura. Lo requieren todos los demás permisos ai:*.",
       "ai_write": "Herramientas de MCP que modifican datos.",
       "ai_execute": "Herramientas de MCP que ejecutan acciones en los dispositivos.",
@@ -2217,6 +2218,7 @@
       "email": "Correo electrónico de soporte",
       "phone": "Teléfono de soporte",
       "welcomeMessage": "Mensaje de bienvenida",
+      "welcomeMessageHelp": "Se muestra en la parte superior de la página de inicio del cliente en el portal y en la página de inicio de sesión del portal cuando la organización usa un dominio personalizado verificado. Texto sin formato; se conservan los saltos de línea.",
       "footerText": "Texto de pie de página",
       "footerTextHelp": "Se muestra al pie del portal de clientes y se imprime en las cotizaciones y facturas de esta organización, en lugar del pie de página de documentos del socio. Déjelo en blanco para imprimir el pie de página del socio.",
       "footerTextInheritedSource": "Pie de página de documentos del socio"

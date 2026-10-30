@@ -217,6 +217,7 @@
       "enrollment-keys_write": "Mint device enrollment keys. Requires an expiry and at least one source IP or CIDR.",
       "contracts_write": "Read, create and edit contracts and contract lines, and remove lines. Cannot activate, pause or cancel.",
       "tickets_write": "Create, update, assign, change status of and comment on tickets. Cannot delete or move tickets.",
+      "alerts_write": "Acknowledge and resolve alerts in every org the principal can reach. Does not grant reading alert details (alerts:read), suppress, dismiss or delete.",
       "ai_read": "Connect to the MCP endpoint and use read-only tools. Required by every other ai:* scope.",
       "ai_write": "MCP tools that change data.",
       "ai_execute": "MCP tools that run actions on devices.",
@@ -2217,6 +2218,7 @@
       "email": "Support email",
       "phone": "Support phone",
       "welcomeMessage": "Welcome message",
+      "welcomeMessageHelp": "Shown at the top of the customer's home page in the portal, and on the portal sign-in page when the organization uses a verified custom domain. Plain text; line breaks are kept.",
       "footerText": "Footer text",
       "footerTextHelp": "Shown at the bottom of the customer portal and printed on this organization's quotes and invoices, replacing the partner document footer. Leave blank to print the partner footer.",
       "footerTextInheritedSource": "Partner document footer"

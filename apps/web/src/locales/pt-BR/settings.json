@@ -217,6 +217,7 @@
       "enrollment-keys_write": "Gerar chaves de registro de dispositivos. Exige validade e pelo menos um IP de origem ou CIDR.",
       "contracts_write": "Ler, criar e editar contratos e linhas de contrato, e remover linhas. Não pode ativar, pausar nem cancelar.",
       "tickets_write": "Criar, atualizar, atribuir, alterar o status e comentar tickets. Não pode excluir nem mover tickets.",
+      "alerts_write": "Reconhecer e resolver alertas em todas as organizações acessíveis ao principal. Não permite ler os detalhes dos alertas (alerts:read), suprimi-los, dispensá-los ou excluí-los.",
       "ai_read": "Conectar-se ao endpoint MCP e usar ferramentas somente leitura. Exigido por todos os outros escopos ai:*.",
       "ai_write": "Ferramentas MCP que alteram dados.",
       "ai_execute": "Ferramentas MCP que executam ações nos dispositivos.",
@@ -2217,6 +2218,7 @@
       "email": "E-mail de suporte",
       "phone": "Telefone de suporte",
       "welcomeMessage": "Mensagem de boas-vindas",
+      "welcomeMessageHelp": "Exibido no topo da página inicial do cliente no portal e na página de login do portal quando a organização usa um domínio personalizado verificado. Texto simples; as quebras de linha são mantidas.",
       "footerText": "Texto do rodapé",
       "footerTextHelp": "Exibido no fim do portal do cliente e impresso nas cotações e faturas desta organização, no lugar do rodapé dos documentos do parceiro. Deixe em branco para imprimir o rodapé do parceiro.",
       "footerTextInheritedSource": "Rodapé dos documentos do parceiro"
