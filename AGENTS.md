@@ -44,6 +44,32 @@ Partner (MSP) → Organization (Customer) → Site (Location) → Device Group �
 ```
 
 ### Tenant Isolation / RLS (READ BEFORE ADDING TABLES)
+API connects to Postgres as unprivileged `breeze_app`. Every tenant-scoped table MUST have RLS enabled + forced + policies — no app-layer-only fallback. Contract test: `apps/api/src/__tests__/integration/rls-coverage.integration.test.ts`.
+
+**Six tenancy shapes:**
+
+| # | Shape | Policy helper | Allowlist |
+|---|---|---|---|
+| 1 | Direct `org_id` column | `breeze_has_org_access(org_id)` | auto-discovered |
+| 2 | Id-keyed (`organizations`) | `breeze_has_org_access(id)` | `ORG_ID_KEYED_TENANT_TABLES` |
+| 3 | Partner-axis | `breeze_has_partner_access(partner_id)` (flat, never tree traversal) | `PARTNER_TENANT_TABLES` |
+| 4 | Dual-axis (`users`) | partner OR org OR `breeze_current_user_id()`; enforced by composite FK `(org_id, partner_id) → organizations(id, partner_id)` | — |
+| 5 | Device-id scoped | hot agent-write tables denormalize `org_id` (Phase 1-4); cold tables use `EXISTS` join policy (Phase 5) | `DEVICE_ID_JOIN_POLICY_TABLES` |
+| 6 | User-id scoped | `breeze_current_user_id()` | `USER_ID_SCOPED_TABLES` |
+
+**DB context helpers** (`apps/api/src/db/index.ts`): `withDbAccessContext` (request path), `withSystemDbAccessContext` (background/seeds — call `runOutsideDbContext` first if inside a request), bare pool is forbidden in request code.
+
+**Intentionally system-scoped:** `device_commands` (agent WS path). Anything else flagged `INTENTIONAL_UNSCOPED` in a plan doc.
+
+**Workflow for a new tenant-scoped table:**
+1. Pick a shape; add policies in the same migration that creates the table — never defer.
+2. Migration must be idempotent (`IF NOT EXISTS` / `DO $$`). Never edit a shipped migration.
+3. Add to the relevant allowlist in `rls-coverage.integration.test.ts` in the same PR (shapes 2-6).
+4. Run the contract test locally (needs real DB).
+5. Verify as `breeze_app`: `docker exec -it breeze-postgres psql -U breeze_app -d breeze` and forge a cross-tenant insert — must fail with `new row violates row-level security policy`.
+
+For production backfills of `org_id` on hot tables (>1M rows), batch via `UPDATE ... WHERE ctid IN (... LIMIT N)` loops before `SET NOT NULL`. Full narrative and rationale: `docs/superpowers/plans/tenancy-rls/2026-04-11-rls-coverage-gaps.md`.
+
 Full contract, the six tenancy shapes, and the cascade/export registration table: **`docs/agents/tenancy-rls.md`**. The rules that bite:
 
 - API connects as unprivileged `breeze_app`. Every tenant-scoped table has RLS enabled + forced + policies **in the same migration that creates it**. No app-layer-only fallback.
