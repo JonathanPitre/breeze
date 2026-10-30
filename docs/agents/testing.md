@@ -26,6 +26,9 @@ For test-writing conventions (Drizzle mock patterns, table-driven Go tests, vali
 - Integration tests run in the **`integration-test`** job (16 shards), which **blocks PRs**: it carries no `continue-on-error`, and `ci-success` hard-fails on `needs.integration-test.result`. Do not hand-dispatch CI to get an integration run on a PR that targets `main` — it already ran. The `continue-on-error: ${{ github.event_name == 'pull_request' }}` in `ci.yml` belongs to the separate **`smoke-test`** job (Docker image build + stack boot + endpoint smoke), which is non-blocking on PRs and required on main. A green PR can still redden main, but through a stale base or a stacked branch (see `docs/agents/tenancy-rls.md`, last paragraph of the cascade section), not through a skipped integration run
 
 ## Running Tests Locally
+
+Install the repository's pinned Node.js and pnpm versions, then run `pnpm install --frozen-lockfile` in each worktree before testing. Vitest is a local API development dependency. See [Development Setup](../../CONTRIBUTING.md#development-setup) for worktree dependency setup.
+
 ```bash
 # All tests
 pnpm test
@@ -70,4 +73,3 @@ API unit runs (`vitest.config.ts`) never read the root `.env`: under vitest, `db
 - **Vitest's path filter is a plain substring match, not a glob and not a directory prefix.** `vitest run src/routes/auth/` (trailing slash) matches only files physically inside the `auth/` directory and will **silently skip** sibling files `src/routes/auth.test.ts` and `src/routes/auth.passkeys.test.ts` — a targeted run can read green while both siblings are red and never executed. An asterisk does **not** help either — `vitest run src/routes/auth*` matches zero files (confirmed: "No test files found"); vitest does not glob-expand CLI filters. To cover a file and its dotted siblings, either list them explicitly (`vitest run src/routes/auth.test.ts src/routes/auth.passkeys.test.ts`) or drop the trailing slash and rely on substring matching (`vitest run src/routes/auth`) — but check the reported file count, since a bare substring can pull in unrelated matches too (e.g. `src/routes/auth` also matches `authenticator.test.ts`).
 
 ---
-

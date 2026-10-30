@@ -11,9 +11,9 @@ Preserve Claude Code support. Keep project rules, security requirements, and ver
 ## 📁 First step: contributor instructions
 
 - Make `AGENTS.md` the canonical project instruction file.
-- Keep `CLAUDE.md` as a minimal compatibility file containing `@AGENTS.md`.
-- Make contributor-facing rules in `AGENTS.md` authoritative and turn `CLAUDE.md` into an import plus any Claude-only guidance.
-- Fix the merge instruction drift. `AGENTS.md` currently tells contributors to use `--admin`, while the merge queue policy on `main` requires the queue except during a declared emergency.
+- Keep `CLAUDE.md` as a one-line compatibility file containing `@AGENTS.md`.
+- Make contributor-facing rules in `AGENTS.md` authoritative. Preserve Claude-specific guidance in `docs/agents/harness-workflows.md`, linked from the shared instructions.
+- Fix the former merge instruction drift. Shared guidance requires the merge queue and allows `--admin` only during a declared emergency.
 - Keep maintainer-operation skills under `.claude/skills/` for this step. Move only contributor workflows such as `issue-to-pr`, `breeze-testing`, `worktree-stack`, `e2e-coverage`, and possibly `feature-testing` after the scope split is reviewed.
 - Keep Claude-specific settings, commands, and custom agents where required. They should adapt shared workflows rather than duplicate their instructions.
 - Keep personal preferences and credentials outside tracked project configuration.
@@ -32,7 +32,7 @@ Do not make symlinks the required compatibility mechanism. Windows Git checkouts
 
 ## 🔧 Workflow changes
 
-- Keep this first change limited to contributor-facing root instructions and the merge-policy correction. Scope skill portability, model routing, handoff paths, attribution, and command adapters as follow-up work after the initial diff is reviewed.
+- Keep this first change limited to contributor-facing instructions, preservation of optional harness workflows, the merge-policy correction, and dependency documentation. Skill portability, changes to model routing, handoff paths, attribution, and command adapters remain follow-up work.
 - Update contributor setup docs to explain that each Git worktree has its own dependency links and must run `pnpm install --frozen-lockfile` before tests. Document the API test command and required Node.js and pnpm versions from Development Setup.
 
 ## 🛡️ Boundaries
@@ -44,14 +44,14 @@ Do not make symlinks the required compatibility mechanism. Windows Git checkouts
 
 ## ✅ Acceptance checks
 
-- [ ] A fresh checkout contains one authoritative instruction source; the Claude compatibility file imports it without duplicating rules.
-- [ ] `AGENTS.md` is the source of contributor rules and the Claude file imports it without copying the rules.
-- [ ] The merge guidance follows the current queue policy, with `--admin` allowed only for a declared emergency.
-- [ ] Contributor docs explain per-worktree dependency installation and provide the API Vitest command.
-- [ ] The change leaves maintainer skills and their ignored private state paths untouched.
+- [x] A fresh checkout contains one authoritative instruction source; the Claude compatibility file imports it without duplicating rules.
+- [x] `AGENTS.md` is the source of contributor rules and the Claude file imports it without copying the rules.
+- [x] The merge guidance follows the current queue policy, with `--admin` allowed only for a declared emergency.
+- [x] Contributor docs explain per-worktree dependency installation and provide the API Vitest command.
+- [x] The change leaves maintainer skills and their ignored private state paths untouched.
 - [ ] Shared instructions and docs use OS-neutral paths and commands wherever practical.
 - [ ] A later skills-migration change records Claude Code and Codex discovery on Linux, macOS, and Windows, including nested directories and worktrees.
-- [ ] No developer must enable symlink support or use elevated permissions to load the shared workflow.
+- [x] The root compatibility file is a regular file; this change introduces no symlink or elevated setup requirement.
 - [ ] A later workflow-portability change demonstrates issue-to-PR completion independently in both harnesses without personal plugins.
 
 ## 📚 Compatibility evidence
@@ -60,6 +60,16 @@ Claude Code supports automatic `AGENTS.md` loading from v2.1.277, with availabil
 
 The current [Claude skills documentation](https://code.claude.com/docs/en/skills#choose-where-skills-load) names `.claude/skills/` for project discovery. Do not assume that support for `AGENTS.md` also means native discovery of `.agents/skills/`. Verify any cross-platform adapter on Linux, macOS, and Windows before making it part of the contributor workflow.
 
+## 📋 Reconciliation record
+
+- The newer shared rules from `CLAUDE.md` form the canonical `AGENTS.md` baseline, including settings, cascade/export registration, migration ordering, integration-test guidance, and the merge queue.
+- Unique GitHub naming, issue-linking, Docker modes, and test-writing conventions from the older `AGENTS.md` remain in the shared instructions.
+- Detailed tenancy, migration, test, local-stack, and deployment requirements remain in their existing domain guides, linked from `AGENTS.md`.
+- The old Codex delegation section, including commands, task boundaries, and historical benchmark claims, is preserved in `docs/agents/harness-workflows.md`. Claude's advisor and plugin-based feature-tracking recipes are preserved there too.
+- `docs/agents/model-routing.md` remains unchanged. Its recommendations conflict with parts of the older Codex section; both are explicitly marked as historical guidance pending review. This change does not choose new models or task owners.
+- `CLAUDE.md` contains only `@AGENTS.md`, as agreed after the design review.
+- Contributor setup documents the version pins, per-worktree dependency links, and existing API `test:run` command. The extra `--` suggested originally is omitted because the repository documents that it breaks Vitest flag parsing.
+
 ## 🚧 Implementation status
 
-This draft narrows the first implementation to root contributor instructions, merge policy, and dependency setup documentation. It defers skill migration until the contributor versus maintainer skill split and cross-platform discovery behavior are verified.
+The first-step file and documentation changes are implemented. Skills, private state paths, and ignore rules remain in place. Instruction and skill discovery in actual Claude Code and Codex sessions on Linux, macOS, and Windows is not verified by this documentation change. The later skill-migration and full-workflow acceptance checks remain open.

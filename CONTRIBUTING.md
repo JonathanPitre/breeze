@@ -3,7 +3,8 @@
 Thanks for your interest in contributing to Breeze! This guide will help you get started.
 
 > **Want to write code?** Breeze uses a plan-driven workflow: work is captured as
-> plan documents, and an approved plan is your green light to build. Read
+> plan documents, and an approved plan is your green light to build.
+> Shared repository rules live in [AGENTS.md](AGENTS.md). For Claude-specific setup, read
 > [Coding with Claude Code](https://docs.breezermm.com/contributing/coding-with-claude-code/)
 > for how to pick up work, propose your own, and hand it back ready to merge.
 > The rest of this file covers bug reports, dev setup, and the mechanical PR gate.
@@ -21,11 +22,13 @@ Have an idea? [Start a discussion](https://github.com/lanternops/breeze/discussi
 
 ## Development Setup
 
+Install Node.js 22.23.4 as pinned in `.nvmrc`, and pnpm 10.34.5 as pinned in `package.json`. Use the corresponding versions in those files if the pins change.
+
 ```bash
 # Clone and install
 git clone https://github.com/lanternops/breeze.git
 cd breeze
-pnpm install
+pnpm install --frozen-lockfile
 
 # Configure environment
 cp .env.example .env
@@ -67,6 +70,20 @@ docker compose ls -a   # shows any stack still running, from any checkout
 - **Frontend**: http://localhost:4321
 - **API**: http://localhost:3001
 - **Default login**: `admin@breeze.local` / `BreezeAdmin123!` (change after first login)
+
+### 🧰 Git worktree dependencies
+
+Each Git worktree needs its own dependency links because `node_modules` is not shared between worktrees. pnpm can reuse its package store, but each checkout still needs an installation. After creating a worktree or switching to a checkout without installed dependencies, install its locked dependencies before running tests:
+
+```sh
+cd /path/to/breeze-worktree
+pnpm install --frozen-lockfile
+pnpm --filter @breeze/api test:run
+```
+
+Replace the example path with your worktree path on Linux, macOS, or Windows. Vitest is an API development dependency installed by `pnpm install`; do not install it globally. Re-run the install when switching branches changes the lockfile. Avoid production-only installs when developing or running tests.
+
+For a scoped test, use `pnpm --filter @breeze/api test --run src/routes/auth.test.ts`. Do not insert another `--` before `--run`; see the [test command reference](docs/agents/testing.md).
 
 ### Local `.env` values
 
