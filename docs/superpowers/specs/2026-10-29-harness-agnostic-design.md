@@ -32,7 +32,7 @@ Do not make symlinks the required compatibility mechanism. Windows Git checkouts
 
 ## 🔧 Workflow changes
 
-- Keep this first change limited to contributor-facing instructions, preservation of optional harness workflows, the merge-policy correction, and dependency documentation. Skill portability, changes to model routing, handoff paths, attribution, and command adapters remain follow-up work.
+- Keep this first change limited to contributor-facing instructions, preservation of optional harness workflows, the merge-policy correction, and dependency documentation. Skill portability, handoff paths, attribution, and command adapters remain follow-up work. The current model-routing recommendations and optional legacy recipes are updated in this PR.
 - Update contributor setup docs to explain that each Git worktree has its own dependency links and must run `pnpm install --frozen-lockfile` before tests. Document the API test command and required Node.js and pnpm versions from Development Setup.
 
 ## 🛡️ Boundaries

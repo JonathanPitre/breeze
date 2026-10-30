@@ -12,7 +12,7 @@ The legacy guidance below is preserved from the root `AGENTS.md`. It differs fro
 
 ## 📋 Existing CI guidance
 
-The following original guidance describes an older CI configuration. For the current job map, see [testing guidance](testing.md); integration tests are required.
+The following original guidance is historical. The current `integration-test` job is blocking when applicable; `smoke-test` is a separate, nonblocking job on PRs. See the current [testing guidance](testing.md).
 
 ### CI Integration
 - All tests run automatically in CI (`.github/workflows/ci.yml`)

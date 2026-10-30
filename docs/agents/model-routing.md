@@ -1,8 +1,10 @@
 # Model routing and Codex delegation
 
-Moved verbatim from `CLAUDE.md` (2026-10-07).
+Originally moved from `CLAUDE.md` (2026-10-07).
 
 ## Model Routing (cost/speed strategy — benchmarked 2026-09-01)
+
+The following historical strategy is optional. Contributors can complete their work using Claude Code or Codex independently; no cross-harness delegation is required.
 
 **Expensive models write contracts and verify claims; cheap models do everything in between; mechanical checks replace expensive review wherever the work is gradeable.** Basis: two head-to-head benchmarks (blind bug-hunt + blind spec→codegen) across Laguna, Codex gpt-5.6-sol med/high, Haiku, Sonnet, Opus — see memory `model-benchmark-codex-claude-laguna-2026-09-01`.
 
@@ -14,7 +16,11 @@ Moved verbatim from `CLAUDE.md` (2026-10-07).
 
 ## Codex Delegation
 
-This project uses OpenAI Codex CLI for **read-only analysis (bug-hunting, security review, design-from-plan — its strongest uses) and well-scoped single-file edits** (utilities, co-located tests, CRUD endpoints, mechanical renames). Keep with Claude: repo-wide sweeps/enumeration, cross-module refactors (codex misses existing canonical code), UI work, and the *architecture* of multi-tenant/auth changes — though codex may *execute* an RLS migration once Claude hands it the tenancy contract. Default to `medium` (2026-09-01 bench: `medium` beat `high` on bug-hunts and tied on codegen); escalate to `high` only when medium comes back thin; reserve `xhigh` for open-ended design. For current model routing, use GPT-6.1 Sol by default for coding, GPT-6 Astra for the most complex or high-risk work, and GPT-6.1 Terra for fast, high-volume routine tasks, especially computer use. OpenAI reports Sol nearly matches Astra on agentic coding at one-fifth the API token price; Terra is half Sol's API token price and faster, while Sol or Astra remain preferable for the most complex coding tasks ([GPT-6.1 Sol](https://openai.com/index/introducing-gpt-6-1-sol/), [GPT-6.1 Terra](https://openai.com/index/introducing-gpt-6-1-terra/)). For Codex commands and the preserved legacy delegation table, see [optional harness workflows](harness-workflows.md).
+The following legacy Claude-to-Codex recipe is optional.
+
+This project uses OpenAI Codex CLI for **read-only analysis (bug-hunting, security review, design-from-plan — its strongest uses) and well-scoped single-file edits** (utilities, co-located tests, CRUD endpoints, mechanical renames). Keep with Claude: repo-wide sweeps/enumeration, cross-module refactors (codex misses existing canonical code), UI work, and the *architecture* of multi-tenant/auth changes — though codex may *execute* an RLS migration once Claude hands it the tenancy contract. Default to `medium` (2026-09-01 bench: `medium` beat `high` on bug-hunts and tied on codegen); escalate to `high` only when medium comes back thin; reserve `xhigh` for open-ended design.
+
+For current model routing, use GPT-6.1 Sol by default for coding, GPT-6 Astra for the most complex or high-risk work, and GPT-6.1 Terra for fast, high-volume routine tasks, especially computer use. OpenAI reports Sol nearly matches Astra on agentic coding at one-fifth the API token price; Terra is half Sol's API token price and faster, while Sol or Astra remain preferable for the most complex coding tasks ([GPT-6.1 Sol](https://openai.com/index/introducing-gpt-6-1-sol/), [GPT-6.1 Terra](https://openai.com/index/introducing-gpt-6-1-terra/)). For Codex commands and the preserved legacy delegation table, see [optional harness workflows](harness-workflows.md).
 
 ---
 

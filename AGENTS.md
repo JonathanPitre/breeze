@@ -134,28 +134,6 @@ The `no-silent-mutations` test (`apps/web/src/lib/__tests__/no-silent-mutations.
 ### Settings — one concept, one home
 A setting is edited in one place per level, lives with its domain, and resolves partner default → org override → snapshot on the document. Full nine rules: `docs/agents/settings.md`. **Rule 9:** a PR that adds a setting states its home, level, resolver, and the count of places the concept is configured before and after (PR template checkbox). Nav registration enforced by `settingsPageRegistry.test.ts`.
 
-### Schema Migration Workflow
-Hand-written SQL in `apps/api/migrations/` — never `drizzle-kit generate`/`push`. **Read `apps/api/migrations/README.md` before writing one.** The rules that bite:
-- Name it to sort **after the newest committed migration** — check, don't assume today's date (shipped names run ahead of real time). Prefer `YYYY-MM-DD-HHMMSS-<slug>.sql`. `2026-08-06` is a closed block.
-- Idempotent; no inner `BEGIN;`/`COMMIT;`; never edit or rename a shipped migration.
-- Any file that writes rows elects system scope first: `SELECT set_config('breeze.scope', 'system', true);` — otherwise writes silently match zero rows under forced RLS (`migrationRlsScope.test.ts`).
-- Then `pnpm db:check-drift`.
-
-
-### Schema Migration Workflow
-1. Edit schema files in `apps/api/src/db/schema/`
-2. Write a hand-written SQL migration in `apps/api/migrations/`. The runner accepts any filename matching `^\d{4}-.*\.sql$` and applies them in `localeCompare` (lexicographic) order, so the prefix has to sort correctly.
-   - **Idempotent:** `CREATE TABLE IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`, `DROP CONSTRAINT IF EXISTS` then re-add, `DO $$ BEGIN ... EXCEPTION`, `pg_policies` existence checks for policies. Re-applying must be a no-op.
-   - **No inner `BEGIN;`/`COMMIT;`:** `autoMigrate` wraps each file in `client.begin(...)`. Adding your own transaction blocks emits `NOTICE: there is already a transaction in progress` and serves no purpose.
-   - **Cleanup statements must report row counts:** a migration that UPDATEs/DELETEs suspect rows (e.g. before adding a constraint) should wrap the statement in `DO $$ ... GET DIAGNOSTICS n = ROW_COUNT; IF n > 0 THEN RAISE WARNING 'cleaned % <what>', n; END IF; END $$;` so the count lands in Postgres logs. Silently fixing bad data destroys the forensic trail — if those rows could evidence a tenant-isolation breach, you want a recorded count even when it's 0 (lesson from `2026-06-10-c`).
-   - **Never edit a shipped migration** — fix forward with a new migration. (Renaming is also editing for tracking purposes: `breeze_migrations` keys on filename, so a rename causes already-migrated DBs to re-apply under the new name. Do not rename a shipped migration.)
-3. Run `pnpm db:check-drift` to verify schema matches migrations
-4. Commit the migration file
-
-**Drizzle usage:** Drizzle ORM is used for type-safe queries only. `drizzle-kit` is retained for schema drift detection (`db:check-drift`) and Drizzle Studio (`db:studio`). **Do not use `drizzle-kit generate` or `drizzle-kit push` for migrations.**
-
-For optional TimescaleDB setup, see `apps/api/migrations/optional/`.
-
 ---
 
 ## Working Style
@@ -226,12 +204,15 @@ Delegate exploration, large reads, log/test-output inspection, and reviews; keep
 6. **Edge cases** — empty arrays, nil inputs, concurrent access
 
 ### CI Integration
-The following guidance reflects the older CI configuration. The current CI job map is in `docs/agents/testing.md`; integration tests are required.
-- All tests run automatically in CI (`.github/workflows/ci.yml`)
-- `test-api`, `test-web`, `test-agent` are **required** jobs on PRs
-- New test files are auto-discovered — no CI config changes needed
-- Go coverage is uploaded as artifact; no threshold enforced yet
-- Integration tests run in `smoke-test` job with `continue-on-error: true`
+Current CI runs integration tests in the separate blocking `integration-test` job when applicable; `smoke-test` is a separate, nonblocking job on PRs. See `docs/agents/testing.md` for the job map.
+
+The following is historical guidance, preserved from the original `AGENTS.md`:
+
+> - All tests run automatically in CI (`.github/workflows/ci.yml`)
+> - `test-api`, `test-web`, `test-agent` are **required** jobs on PRs
+> - New test files are auto-discovered — no CI config changes needed
+> - Go coverage is uploaded as artifact; no threshold enforced yet
+> - Integration tests run in `smoke-test` job with `continue-on-error: true`
 
 ### Running Tests Locally
 ```bash
@@ -282,8 +263,17 @@ Each worktree needs its own dependency installation: run `pnpm install --frozen-
 **Tear down what you bring up** (`pnpm wt-stack down`, `pnpm test-stack down`, compose `down -v`) and say what you left running — see `docs/agents/local-stacks.md`. Deleting a config file? Sweep compose bind mounts in the same PR (`composeBindMounts.test.ts`).
 
 ### Schema Migration Workflow
+Hand-written SQL in `apps/api/migrations/` — never `drizzle-kit generate`/`push`. **Read `apps/api/migrations/README.md` before writing one.** The rules that bite:
+- Name it to sort **after the newest committed migration** — check, don't assume today's date (shipped names run ahead of real time). Prefer `YYYY-MM-DD-HHMMSS-<slug>.sql`. `2026-08-06` is a closed block.
+- Idempotent; no inner `BEGIN;`/`COMMIT;`; never edit or rename a shipped migration.
+- Any file that writes rows elects system scope first: `SELECT set_config('breeze.scope', 'system', true);` — otherwise writes silently match zero rows under forced RLS (`migrationRlsScope.test.ts`).
+- Then `pnpm db:check-drift`.
+
 1. Edit schema files in `apps/api/src/db/schema/`
 2. Write a hand-written SQL migration in `apps/api/migrations/`. The runner accepts any filename matching `^\d{4}-.*\.sql$` and applies them in `localeCompare` (lexicographic) order, so the prefix has to sort correctly.
+   - For new migrations, prefer the timestamp format above. The following date-only convention applies when using filenames without a time component:
+   - **Naming:** use `YYYY-MM-DD-<slug>.sql` (the current convention). The legacy `NNNN-<slug>.sql` 4-digit form is still accepted but only for files predating the date-prefix switch — don't introduce new ones.
+   - **Same-day ordering:** if two migrations on the same date depend on each other (e.g. one creates a table, the other adds constraints or policies on it), insert an explicit `-a-`/`-b-` infix between the date and the slug: `2026-04-19-a-installer-bootstrap-tokens.sql`, `2026-04-19-b-installer-bootstrap-tokens-constraints.sql`. Don't rely on the slug to sort the files for you — `-` (0x2D) < `.` (0x2E), so `foo-bar.sql` sorts *after* `foo-bar-extra.sql`, which has bitten us before (issue #506). The `apps/api/src/db/autoMigrate.test.ts` regression test will catch most ordering bugs.
    - **Idempotent:** `CREATE TABLE IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`, `DROP CONSTRAINT IF EXISTS` then re-add, `DO $$ BEGIN ... EXCEPTION`, `pg_policies` existence checks for policies. Re-applying must be a no-op.
    - **No inner `BEGIN;`/`COMMIT;`:** `autoMigrate` wraps each file in `client.begin(...)`. Adding your own transaction blocks emits `NOTICE: there is already a transaction in progress` and serves no purpose.
    - **Cleanup statements must report row counts:** a migration that UPDATEs/DELETEs suspect rows (e.g. before adding a constraint) should wrap the statement in `DO $$ ... GET DIAGNOSTICS n = ROW_COUNT; IF n > 0 THEN RAISE WARNING 'cleaned % <what>', n; END IF; END $$;` so the count lands in Postgres logs. Silently fixing bad data destroys the forensic trail — if those rows could evidence a tenant-isolation breach, you want a recorded count even when it's 0 (lesson from `2026-06-10-c`).
