@@ -10,6 +10,17 @@ The [model-routing guide](model-routing.md) now recommends Sol for default codin
 
 The legacy guidance below is preserved from the root `AGENTS.md`. It differs from the model-routing guide on reasoning levels and which tasks to delegate. Both remain available pending a separate review; this PR does not change the legacy task ownership.
 
+## 📋 Existing CI guidance
+
+The following original guidance describes an older CI configuration. For the current job map, see [testing guidance](testing.md); integration tests are required.
+
+### CI Integration
+- All tests run automatically in CI (`.github/workflows/ci.yml`)
+- `test-api`, `test-web`, `test-agent` are **required** jobs on PRs
+- New test files are auto-discovered — no CI config changes needed
+- Go coverage is uploaded as artifact; no threshold enforced yet
+- Integration tests run in `smoke-test` job with `continue-on-error: true`
+
 ## Claude advisor workflow
 
 The following instruction previously appeared in `CLAUDE.md` and belongs to the optional Claude-to-Codex workflow.
