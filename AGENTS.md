@@ -139,6 +139,21 @@ Hand-written SQL in `apps/api/migrations/` — never `drizzle-kit generate`/`pus
 - Any file that writes rows elects system scope first: `SELECT set_config('breeze.scope', 'system', true);` — otherwise writes silently match zero rows under forced RLS (`migrationRlsScope.test.ts`).
 - Then `pnpm db:check-drift`.
 
+
+### Schema Migration Workflow
+1. Edit schema files in `apps/api/src/db/schema/`
+2. Write a hand-written SQL migration in `apps/api/migrations/`. The runner accepts any filename matching `^\d{4}-.*\.sql$` and applies them in `localeCompare` (lexicographic) order, so the prefix has to sort correctly.
+   - **Idempotent:** `CREATE TABLE IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`, `DROP CONSTRAINT IF EXISTS` then re-add, `DO $$ BEGIN ... EXCEPTION`, `pg_policies` existence checks for policies. Re-applying must be a no-op.
+   - **No inner `BEGIN;`/`COMMIT;`:** `autoMigrate` wraps each file in `client.begin(...)`. Adding your own transaction blocks emits `NOTICE: there is already a transaction in progress` and serves no purpose.
+   - **Cleanup statements must report row counts:** a migration that UPDATEs/DELETEs suspect rows (e.g. before adding a constraint) should wrap the statement in `DO $$ ... GET DIAGNOSTICS n = ROW_COUNT; IF n > 0 THEN RAISE WARNING 'cleaned % <what>', n; END IF; END $$;` so the count lands in Postgres logs. Silently fixing bad data destroys the forensic trail — if those rows could evidence a tenant-isolation breach, you want a recorded count even when it's 0 (lesson from `2026-06-10-c`).
+   - **Never edit a shipped migration** — fix forward with a new migration. (Renaming is also editing for tracking purposes: `breeze_migrations` keys on filename, so a rename causes already-migrated DBs to re-apply under the new name. Only acceptable when the file is fully idempotent and re-application is a true no-op.)
+3. Run `pnpm db:check-drift` to verify schema matches migrations
+4. Commit the migration file
+
+**Drizzle usage:** Drizzle ORM is used for type-safe queries only. `drizzle-kit` is retained for schema drift detection (`db:check-drift`) and Drizzle Studio (`db:studio`). **Do not use `drizzle-kit generate` or `drizzle-kit push` for migrations.**
+
+For optional TimescaleDB setup, see `apps/api/migrations/optional/`.
+
 ---
 
 ## Working Style
@@ -318,3 +333,42 @@ cd agent && go test -race ./internal/discovery/...
 # E2E
 cd e2e-tests && pnpm test
 ```
+
+## Production Deploy
+
+Production hosts pull from `/opt/breeze` and use mutable image tags driven by `BREEZE_VERSION` in `/opt/breeze/.env`. Keep hostnames, regions, and internal mappings out of tracked files; use placeholders in docs and examples.
+
+```bash
+ssh root@<host> "cd /opt/breeze && \
+  cp .env .env.bak-pre-<new-version> && \
+  sed -i 's/^BREEZE_VERSION=.*/BREEZE_VERSION=<new-version>/' .env && \
+  docker compose pull api web portal && \
+  docker compose up -d binaries-init api web portal && \
+  docker image prune -af --filter 'until=168h' && \
+  docker builder prune -af"
+```
+
+Then verify health with `curl -sf https://<host-or-domain>/health` (200 = healthy).
+
+**The service list is hand-maintained and WILL go stale — always assert version parity after deploying.** Services are named explicitly (not a bare `docker compose pull && up -d`) because the billing service builds from a local image with no registry to pull from, and a bare `up -d` would needlessly bounce the reverse proxy, redis and the tunnel. The cost is that a newly added first-party service is silently never rolled — the customer portal (a separate container serving `/portal/*`, which customers reach from quote and invite emails) stayed several versions behind for weeks while `/health` reported the new version. Watchtower is not a backstop: it is label-gated and no service carries the label.
+
+`/health` is served by the API and cannot detect this, so enumerate what is actually running:
+
+```bash
+ssh root@<host> "cd /opt/breeze && set -a && . ./.env && set +a && \
+  docker ps -a --format '{{.Names}}\t{{.Image}}' | grep 'ghcr.io/lanternops/breeze/' | \
+  while IFS=\$'\t' read -r n i; do t=\${i##*:}; \
+    [ \"\$t\" = \"\$BREEZE_VERSION\" ] && echo \"OK    \$n \$t\" || echo \"SKEW  \$n \$t (expected \$BREEZE_VERSION)\"; done"
+# every line must be OK; any SKEW means that service was never rolled.
+```
+
+**Required env vars added by v0.65+ — production hosts without these refuse to start:**
+
+- `RELEASE_ARTIFACT_MANIFEST_PUBLIC_KEYS` — base64 SPKI of the Ed25519 release manifest signing key. Source: `internal/release-keys/release-manifest.ed25519.pub` (the base64 between `-----BEGIN PUBLIC KEY-----` and `-----END PUBLIC KEY-----`, single line). The API config validator refuses to boot in production without it when `BINARY_SOURCE=github`.
+- `IS_HOSTED` — must be explicitly set to `true` (hosted SaaS) or `false` (self-hosted) in production. Without this, a misconfigured deploy (e.g. `.env` value not mapped through compose) silently drops new partners straight to `status='active'`, bypassing the email-verification gate in `/auth/register-partner` (issue #570).
+
+When introducing a new required env var: add it to `/opt/breeze/.env` AND map it explicitly in the `api`/`web` service `environment:` block of `/opt/breeze/docker-compose.yml`. Compose interpolation only happens for vars listed there — having a value in `.env` is necessary but not sufficient.
+
+**Watchtower policy (#603):** repo-tracked compose files never include Watchtower (enforced by `check-supply-chain-hardening.sh`). On production hosts, Watchtower is acceptable for sidecars (caddy, redis, postgres-exporter, cloudflared) but **must not** auto-update `breeze-api` or `breeze-web`. Concretely, the `com.centurylinklabs.watchtower.enable: "true"` label is forbidden on those two services. The hardening check additionally rejects that label string in any tracked compose file as defense-in-depth.
+
+**Known drift:** the deployed `/opt/breeze/docker-compose.yml` may use Watchtower + mutable tags, while `deploy/docker-compose.prod.yml` in the repo uses digest-pinning + no Watchtower. The `check-supply-chain-hardening.sh` rule scans repo files only, so host drift isn't fully enforced. Reconciling this is tracked separately.
