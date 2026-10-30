@@ -1,3 +1,4 @@
+import { findPartnerOwnedGroupIds, partnerGroupTargetRefusal } from '../services/deviceGroupOwnership';
 import { deleteSiteTopologyAiSessions } from '../services/topology/siteTopologySessions';
 import { removeUnreferencedScreenshotFiles } from '../services/screenshotStorage';
 import { ensureDefaultProfile } from '../services/billingProfileService';
@@ -26,6 +27,7 @@ import { ORG_SLUG_UNIQUE_INDEX } from '../db/schema/orgs';
 // on the mock") before a single test runs.
 import { psaConnections } from '../db/schema/integrations';
 import { authMiddleware, requireMfa, requirePermission, requireScope, requirePartner, type AuthContext } from '../middleware/auth';
+import { isAutomationPrincipal } from '../middleware/principalKind';
 import { markPermissionGate } from '../middleware/permissionGate';
 import { wispEnabled } from '../config/env';
 import { writeAuditEvent, writeRouteAudit } from '../services/auditEvents';
@@ -83,7 +85,7 @@ import { syncBillingContactRow, syncSiteContactRow } from '../services/contacts/
 import { escapeLike } from '../utils/sql';
 import { PG_UUID_REGEX } from '../utils/uuid';
 import { isPgUniqueViolation } from '../utils/pgErrors';
-import { isAllowedLauncherScheme, isValidIanaTimezone, canonicalizeTimezone, isValidMaintenanceWindow, MAINTENANCE_WINDOW_ERROR_MESSAGE, normalizeVersionPin, PINNABLE_COMPONENTS, agentVersionPinsSchema, enrollmentDefaultsSchema, aiApprovalSettingsSchema, httpUrlField, keptSecretOrHttpUrlValue, SUPPORTED_LOCALES, ticketingInboundSettingsSchema, timeTrackingSessionSuggestionsSchema, EMAIL_TEMPLATE_IDS, isBlankEmailTemplateHtml } from '@breeze/shared';
+import { isAllowedLauncherScheme, isValidIanaTimezone, canonicalizeTimezone, isValidMaintenanceWindow, MAINTENANCE_WINDOW_ERROR_MESSAGE, normalizeVersionPin, PINNABLE_COMPONENTS, agentVersionPinsSchema, enrollmentDefaultsSchema, aiApprovalSettingsSchema, httpUrlField, keptSecretOrHttpUrlValue, SUPPORTED_LOCALES, ticketingInboundSettingsSchema, timeTrackingSessionSuggestionsSchema, EMAIL_TEMPLATE_IDS, isBlankEmailTemplateHtml, portalCustomCssSchema } from '@breeze/shared';
 import type { IpAllowlistStatus, ResolvedEnrollmentDefaults, SupportedLocale } from '@breeze/shared';
 import { ERROR_CODES, siteLocationFieldsShape, siteLocationPairIsConsistent, SITE_LOCATION_PAIR_MESSAGE, DEFAULT_LAUNCH_PURCHASE_SELECTION } from '@breeze/shared';
 import { siteLocationRoutes } from './siteLocation';
@@ -213,6 +215,16 @@ const paginationSchema = z.object({
   page: z.string().optional(),
   limit: z.string().optional()
 });
+
+/** UUID enrollment defaults name groups; legacy sentinels remain valid. */
+async function partnerEnrollmentGroupIds(settings: unknown): Promise<string[]> {
+  if (!settings || typeof settings !== 'object') return [];
+  const defaults = (settings as Record<string, unknown>).defaults;
+  if (!defaults || typeof defaults !== 'object') return [];
+  const groupId = (defaults as Record<string, unknown>).deviceGroup;
+  if (typeof groupId !== 'string' || !z.string().guid().safeParse(groupId).success) return [];
+  return findPartnerOwnedGroupIds([groupId]);
+}
 
 /**
  * Save-time validation for agent/watchdog version pins on a `settings.defaults`
@@ -659,6 +671,9 @@ orgRoutes.post('/partners', requireScope('system'), requireOrgWrite, requireMfa(
   if (createAssigneeError) {
     return c.json({ error: createAssigneeError, code: 'DEFAULT_ASSIGNEE_NOT_ASSIGNABLE' }, 400);
   }
+  const partnerGroupIds = await partnerEnrollmentGroupIds(data.settings);
+  if (partnerGroupIds.length > 0) return c.json(partnerGroupTargetRefusal(partnerGroupIds), 400);
+
   const createSecrets = resolveIncomingSettingsSecrets(data.settings, undefined);
   if (!createSecrets.ok) {
     return c.json({ error: createSecrets.error }, 400);
@@ -905,7 +920,9 @@ const partnerSettingsSchema = z.object({
     primaryColor: z.string().optional(),
     secondaryColor: z.string().optional(),
     theme: z.enum(['light', 'dark', 'system']).optional(),
-    customCss: z.string().optional(),
+    // #9674: layered ahead of each child org's own CSS on the portal
+    // (routes/portal/portalCustomCss.ts), so it gets the org path's rules.
+    customCss: portalCustomCssSchema,
   }).optional(),
   aiBudgets: z.object({
     enabled: z.boolean().optional(),
@@ -1145,6 +1162,9 @@ orgRoutes.patch(
   async (c) => {
   const auth = c.get('auth');
   const body = c.req.valid('json');
+
+  const partnerGroupIds = await partnerEnrollmentGroupIds(body.settings);
+  if (partnerGroupIds.length > 0) return c.json(partnerGroupTargetRefusal(partnerGroupIds), 400);
 
   // Agent/watchdog version pins (issue #2124) — reject unknown versions at save
   // time so a partner-locked pin can't silently freeze every child org's fleet.
@@ -1484,6 +1504,9 @@ orgRoutes.patch('/partners/:id', requireScope('system'), requireOrgWrite, requir
   const id = c.req.param('id')!;
 
   const data = c.req.valid('json');
+  const partnerGroupIds = await partnerEnrollmentGroupIds(data.settings);
+  if (partnerGroupIds.length > 0) return c.json(partnerGroupTargetRefusal(partnerGroupIds), 400);
+
   const updates: Record<string, unknown> = { ...data, updatedAt: new Date() };
 
   if (Object.keys(data).length === 0) {
@@ -1763,17 +1786,43 @@ async function resolveArchivedOrgScope(
   return null;
 }
 
+// Requests on GET /organizations that passed WITHOUT organizations:read and
+// must be served the name-level projection only (see the gate below).
+const nameLevelOrgListRequests = new WeakSet<Context>();
+
 // Org-scope callers may read their OWN org's name-level row without the
 // organizations:read permission (UI shell / tickets cold load, #1245 residual)
 // — every org user implicitly needs their org's name to render the app shell.
-// Partner/system scope still requires the permission: they list many orgs and
-// receive full rows. The handler's organization branch is hard-scoped to
-// auth.orgId and projects to safe fields only.
+// The handler's organization branch is hard-scoped to auth.orgId and projects
+// to safe fields only.
+//
+// Partner-scope callers get full rows only with organizations:read. Without it
+// (#9528: an org-restricted technician on a custom "Remote Control" role) they
+// still need the NAMES of the orgs they can already reach — the top-nav org
+// switcher and the /devices org filter are fed by this route — so they fall
+// back to the same name-level projection, limited to auth.accessibleOrgIds and
+// never including the archived block. organizations:read stays the permission
+// for managing orgs and for reading full org rows.
+//
+// The strict gate is PROBED (its `next` only records success) rather than
+// re-implemented, so whatever it grants keeps the full-row path and any
+// non-403 failure still propagates. Automation principals never get the
+// fallback: requirePermission denies them outright, and so does this gate.
+// System scope is unchanged — it is not tied to an accessible-org set.
 const requireOrgReadUnlessOwnOrg = async (c: Context, next: Next) => {
   const auth = c.get('auth') as AuthContext | undefined;
   if (!auth) throw new HTTPException(401, { message: 'Not authenticated' });
   if (auth.scope === 'organization') return next();
-  return requireOrgRead(c, next);
+  if (auth.scope !== 'partner' || isAutomationPrincipal(auth)) return requireOrgRead(c, next);
+
+  let granted = false;
+  try {
+    await requireOrgRead(c, async () => { granted = true; });
+  } catch (err) {
+    if (!(err instanceof HTTPException) || err.status !== 403) throw err;
+  }
+  if (!granted) nameLevelOrgListRequests.add(c);
+  return next();
 };
 
 orgRoutes.get('/organizations', requireScope('organization', 'partner', 'system'), requireOrgReadUnlessOwnOrg, zValidator('query', listOrganizationsSchema), async (c) => {
@@ -1823,7 +1872,10 @@ orgRoutes.get('/organizations', requireScope('organization', 'partner', 'system'
   // they are read through the READ ONLY archived context and appended. A
   // partner-scope caller is hard-pinned to its own verified partner id; a
   // partner token with no partnerId gets nothing rather than every partner's.
-  const archivedScope = includeArchived === 'true'
+  // #9528 — a partner caller admitted without organizations:read (see
+  // requireOrgReadUnlessOwnOrg): name-level rows of its accessible orgs only.
+  const nameLevelOnly = nameLevelOrgListRequests.has(c);
+  const archivedScope = includeArchived === 'true' && !nameLevelOnly
     ? await resolveArchivedOrgScope(auth, queryPartnerId)
     : null;
 
@@ -1930,6 +1982,26 @@ orgRoutes.get('/organizations', requireScope('organization', 'partner', 'system'
   // `created_at, id` the tiebreaker, so LIMIT/OFFSET slices the intended
   // sequence. `buildOrganizationListQuery` owns that shape and is pinned on the
   // compiled SQL in `orgs.listQuery.test.ts`.
+  if (nameLevelOnly) {
+    // Same population, order and pagination as the full list — only the
+    // projection differs, and no device counts or archived block ride along.
+    const data = noLiveOrgs
+      ? []
+      : await buildOrganizationListQuery({
+          conditions,
+          limit,
+          offset,
+          preferredOrder,
+          columns: {
+            id: organizations.id,
+            name: organizations.name,
+            slug: organizations.slug,
+            status: organizations.status,
+          },
+        });
+    return c.json({ data, pagination: { page, limit, total: Number(count) } });
+  }
+
   const ordered = noLiveOrgs
     ? []
     : await buildOrganizationListQuery({ conditions, limit, offset, preferredOrder });
@@ -2106,6 +2178,9 @@ orgRoutes.post('/organizations', requireScope('partner', 'system'), requireOrgWr
   const data = c.req.valid('json');
   // M8: canonicalize the MFA allowed-methods alias on CREATE (see /partners).
   data.settings = foldAllowedMfaMethodsAlias(data.settings);
+  const partnerGroupIds = await partnerEnrollmentGroupIds(data.settings);
+  if (partnerGroupIds.length > 0) return c.json(partnerGroupTargetRefusal(partnerGroupIds), 400);
+
   const createSecrets = resolveIncomingSettingsSecrets(data.settings, undefined);
   if (!createSecrets.ok) {
     return c.json({ error: createSecrets.error }, 400);
@@ -2578,6 +2653,9 @@ const updateOrgHandler = [requireScope('partner', 'system'), requireOrgWriteOrPl
   const auth = c.get('auth') as AuthContext;
   const id = c.req.param('id')!;
   const data = c.req.valid('json');
+
+  const partnerGroupIds = await partnerEnrollmentGroupIds(data.settings);
+  if (partnerGroupIds.length > 0) return c.json(partnerGroupTargetRefusal(partnerGroupIds), 400);
 
   // #2879 — suspended orgs are outside canAccessOrg/accessibleOrgIds, so a
   // partner-scope status-only lifecycle transition (suspended→offboarding /
