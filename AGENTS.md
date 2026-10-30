@@ -1,6 +1,20 @@
 # Breeze RMM - Agent Context
 
-Breeze is a Remote Monitoring and Management (RMM) platform for MSPs and internal IT teams, targeting 10,000+ agents. Stack: Astro + React islands (web), Hono/TypeScript (API), PostgreSQL + Drizzle (queries only), BullMQ + Redis, Go agent, WebSocket + HTTP polling, WebRTC remote access.
+## Project Overview
+
+Breeze is a fast, modern Remote Monitoring and Management (RMM) platform for MSPs and internal IT teams. Target: 10,000+ agents with enterprise features.
+
+## Tech Stack
+
+- **Frontend**: Astro + React Islands
+- **API**: Hono (TypeScript)
+- **Database**: PostgreSQL + Drizzle ORM
+- **Queue**: BullMQ + Redis
+- **Agent**: Go (cross-platform)
+- **Real-time**: HTTP polling + WebSocket
+- **Remote Access**: WebRTC
+
+## Contributor instructions
 
 This file holds rules and pointers. **The pointed-to docs are mandatory reading when their trigger applies** — the detail lives there, not here.
 
@@ -42,22 +56,52 @@ Full contract, the six tenancy shapes, and the cascade/export registration table
 ### Partner-Wide First (config/policy tables) — epic #2135
 New config-ish tables (policies, templates, rules, windows, baselines) default to `org_id` XOR `partner_id`; `org_id NOT NULL` needs a stated justification in the PR. Org-first designs have needed painful retrofits every time (#1724, #2126–#2129). The 7-step playbook (migration, write gate `canManagePartnerWidePolicies`, SELECT-only partner read branch, config-policy linkage, worker fan-out by device org's partner, tests + UI, repo-wide `<table>.orgId` sweep) is in `docs/agents/tenancy-rls.md`.
 
+### Database Schema Location
+- `apps/api/src/db/schema/` - All Drizzle schema definitions
+- Key tables: devices, users, organizations, sites, alerts, scripts, automations
+
+### API Routes
+- `apps/api/src/routes/` - Hono route handlers
+- Pattern: Export `xxxRoutes` from each file, mount in `index.ts`
+
 ### File Size Guideline
-Aim for files under ~500 lines, by judgment, not as a hard rule. Declarative files (`aiTools*.ts`, schemas) can run longer. Follow the `aiTools*.ts` pattern: a thin hub file plus per-domain files. Split route files by resource and services by domain. Do not proactively split working files just to meet a count.
+- **Aim to keep files under 500 lines** as a soft guideline, not a hard rule. Use judgment — if a file is cohesive and readable at 600 lines, that's fine. Split when a file becomes hard to navigate or mixes unrelated concerns, not just because it crossed a line count.
+- **Declarative files** (e.g. `aiTools*.ts`, schema definitions) can naturally run longer since they're mostly self-contained registration blocks.
+- Follow the `aiTools*.ts` pattern: one thin hub file for registry/exports, per-domain files for implementations (e.g. `aiToolsDevice.ts`, `aiToolsNetwork.ts`).
+- For route files, split by resource. For service files, split by domain. Helpers used by multiple files can be duplicated locally or extracted to a shared utils file.
+- **Do not proactively split files** that are working well just to meet a line count target. Only split when it improves clarity or maintainability.
+
+### Context Preservation
+- **Prefer subagents for research, exploration, and isolated tasks** to keep the main conversation context lean and avoid hitting context limits during long sessions.
+- Use subagents for: codebase searches, file reading/analysis, PR reviews, build log inspection, and any work that produces large output.
+- Keep the main context for: decision-making, coordinating work, and user interaction.
 
 ### URL State in Components
-Use `window.location.hash` for transient UI state (selected tab, selected list item) — see `DeviceDetails.tsx`, `OrganizationsPage.tsx`. Not query params.
+- Use `window.location.hash` (`#value`) for client-side UI state like selected tabs, selected items in lists, etc. See `DeviceDetails.tsx` and `OrganizationsPage.tsx` for examples.
+- Do **not** use query params (`?key=value`) for transient UI state — keep the pattern consistent.
 
 ### No Internal Infrastructure Details in Public Code
-Never commit IPs, hostnames, regions, droplet addresses, or internal domain mappings. Real values go in gitignored `.env`; `.env.example` uses generic placeholders. `internal/` is gitignored and safe for infra notes.
+- **Never commit** IP addresses, server hostnames, datacenter regions, droplet IPs, or internal domain mappings to the public repo.
+- Region-specific values belong in `.env` files (gitignored), not in code or config templates.
+- `.env.example` files should use generic placeholders (`host`, `password`, `your-domain.example.com`), not real values.
+- The `internal/` directory is gitignored and safe for strategy docs, internal notes, and infra-specific details.
+
+### Shared Code
+- `packages/shared/src/types/` - TypeScript interfaces
+- `packages/shared/src/validators/` - Zod schemas
+- `packages/shared/src/utils/` - Utility functions
 
 ### Web Mutation Handlers — `runAction`
-POST/PUT/PATCH/DELETE handlers wrap the request in `runAction` (`apps/web/src/lib/runAction.ts`), which toasts outcomes and treats HTTP-200 `{success:false}` bodies as failures. Caller catch pattern:
+
+**Mutation handlers must surface outcome via `runAction`.** Web action handlers that POST/PUT/PATCH/DELETE should wrap the request in `runAction` (`apps/web/src/lib/runAction.ts`) so success/failure is always shown to the user. `runAction` also treats HTTP-200 `{success:false}` / `{testResult:{success:false}}` response bodies as failures (not silent no-ops).
+
+Catch pattern for callers:
 ```ts
-if (err instanceof ActionError && err.status === 401) return; // auth redirect handles it
-if (!(err instanceof ActionError)) showToast({ type: 'error', ... }); // ActionError already toasted
+if (err instanceof ActionError && err.status === 401) return; // let auth redirect handle it
+if (!(err instanceof ActionError)) showToast({ type: 'error', ... }); // non-401 ActionError already toasted by runAction
 ```
-Guarded by `apps/web/src/lib/__tests__/no-silent-mutations.test.ts`; exceptions live in `runActionAllowlist.ts`.
+
+The `no-silent-mutations` test (`apps/web/src/lib/__tests__/no-silent-mutations.test.ts`) guards the adopted set. Legitimate exceptions (typed service layers, aggregate/partial-success handlers with inline error UI) are recorded in `apps/web/src/lib/runActionAllowlist.ts`. Spec: `docs/superpowers/specs/web-ui/2026-05-15-ws-a-action-feedback-design.md`.
 
 ### Settings — one concept, one home
 A setting is edited in one place per level, lives with its domain, and resolves partner default → org override → snapshot on the document. Full nine rules: `docs/agents/settings.md`. **Rule 9:** a PR that adds a setting states its home, level, resolver, and the count of places the concept is configured before and after (PR template checkbox). Nav registration enforced by `settingsPageRegistry.test.ts`.
@@ -99,11 +143,34 @@ Claude-to-Codex delegation, model routing, and plugin-based feature tracking are
 ## Testing
 Vitest (API, web, shared), Go `testing` (`go test -race ./...`), Playwright E2E (`data-testid` only). Tests sit alongside source. CI jobs `test-api`, `test-web`, `test-agent` and the 16-shard `integration-test` all block PRs. `pnpm test` does **not** run the RLS/integration contract suites. Scoped-run traps (never `pnpm --filter <pkg> test -- --run <path>`; vitest path filters are substring matches), contract-suite commands and CI job map: **`docs/agents/testing.md`**.
 
+### Frameworks & Configuration
+- **API**: Vitest — `apps/api/vitest.config.ts` (unit), `vitest.config.rls.ts` (RLS), `vitest.integration.config.ts` (integration)
+- **Web**: Vitest + jsdom — `apps/web/vitest.config.ts`
+- **Agent**: Go standard `testing` package — `go test -race ./...`
+- **Shared**: Vitest — `packages/shared/vitest.config.ts`
+- **E2E**: Playwright Test (TypeScript), `data-testid` based — `e2e-tests/playwright.config.ts`, specs under `e2e-tests/tests/*.spec.ts`, Page Objects under `e2e-tests/pages/`. Tests query DOM via `data-testid` attributes only (not text/role/CSS) — see `e2e-tests/README.md` for the convention.
+
+### Test File Placement
+- Place test files **alongside source files**, not in separate directories
+- API: `routes/devices.ts` → `routes/devices.test.ts`
+- Go: `internal/discovery/scanner.go` → `internal/discovery/scanner_test.go`
+- Shared: `validators/filters.ts` → `validators/filters.test.ts`
+
 ## Development Commands
+
 ```bash
-pnpm install && pnpm dev
+# Install dependencies
+pnpm install
+
+# Start development servers
+pnpm dev
+
+# Database operations
 export DATABASE_URL="postgresql://breeze:breeze@localhost:5432/breeze"
-pnpm db:migrate | db:seed | db:check-drift | db:studio
+pnpm db:check-drift  # Verify schema matches migrations (no drift)
+pnpm db:studio       # Open Drizzle Studio
+
+# Agent development
 cd agent && make run
 ```
 Node is pinned to 22.23.4 (`.nvmrc`). No root typecheck script — typecheck runs via turbo/CI.
@@ -207,3 +274,21 @@ docker compose -f docker-compose.yml -f docker-compose.override.yml.local-build 
 4. **Multi-tenant isolation** — cross-org access denied
 5. **Error cases** — not found, conflict, server error
 6. **Edge cases** — empty arrays, nil inputs, concurrent access
+
+### Running Tests Locally
+```bash
+# All tests
+pnpm test
+
+# API only
+pnpm --filter @breeze/api test:run
+
+# Go agent (with race detection)
+cd agent && go test -race ./...
+
+# Specific Go package
+cd agent && go test -race ./internal/discovery/...
+
+# E2E
+cd e2e-tests && pnpm test
+```

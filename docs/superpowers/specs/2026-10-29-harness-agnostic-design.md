@@ -63,7 +63,7 @@ The current [Claude skills documentation](https://code.claude.com/docs/en/skills
 
 ## 📋 Reconciliation record
 
-- The newer shared rules from `CLAUDE.md` form the canonical `AGENTS.md` baseline, including settings, cascade/export registration, migration ordering, integration-test guidance, and the merge queue.
+- Preserve original `AGENTS.md` wording for the overview, Tech Stack, file-size guidance, URL state, infrastructure rules, mutation handling, schema and shared-code locations, test references, and development commands. Retain newer `CLAUDE.md` rules for settings, cascade/export registration, migration ordering, integration-test guidance, and the merge queue.
 - Unique GitHub naming, issue-linking, Docker modes, and test-writing conventions from the older `AGENTS.md` remain in the shared instructions.
 - Detailed tenancy, migration, test, local-stack, and deployment requirements remain in their existing domain guides, linked from `AGENTS.md`.
 - The old Codex delegation section, including commands, task boundaries, and historical benchmark claims, is preserved in `docs/agents/harness-workflows.md`. Claude's advisor and plugin-based feature-tracking recipes are preserved there too.
