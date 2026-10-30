@@ -67,7 +67,7 @@ The current [Claude skills documentation](https://code.claude.com/docs/en/skills
 - Unique GitHub naming, issue-linking, Docker modes, and test-writing conventions from the older `AGENTS.md` remain in the shared instructions.
 - Detailed tenancy, migration, test, local-stack, and deployment requirements remain in their existing domain guides, linked from `AGENTS.md`.
 - The old Codex delegation section, including commands, task boundaries, and historical benchmark claims, is preserved in `docs/agents/harness-workflows.md`. Claude's advisor and plugin-based feature-tracking recipes are preserved there too.
-- `docs/agents/model-routing.md` keeps its model recommendations and task boundaries unchanged; its obsolete reference to a missing skill now points to `docs/agents/harness-workflows.md`. Its recommendations conflict with parts of the older Codex section; both remain historical guidance pending review. This change does not choose new models or task owners.
+- `docs/agents/model-routing.md` keeps its task boundaries; its obsolete reference to a missing skill now points to `docs/agents/harness-workflows.md`, and its fallback model is updated from GPT-5.6 Sol to GPT-6.1 Sol. Its recommendations conflict with parts of the older Codex section; both remain historical guidance pending review. This change does not choose new task owners.
 - `CLAUDE.md` contains only `@AGENTS.md`, as agreed after the design review.
 - Contributor setup documents the version pins, per-worktree dependency links, and existing API `test:run` command. The extra `--` suggested originally is omitted because the repository documents that it breaks Vitest flag parsing.
 
