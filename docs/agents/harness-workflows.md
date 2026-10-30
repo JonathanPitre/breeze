@@ -6,7 +6,7 @@ Shared contributor requirements live in [AGENTS.md](../../AGENTS.md). Neither Cl
 
 ## Existing model routing
 
-The [model-routing guide](model-routing.md) remains unchanged. Its model choices, benchmark claims, and task boundaries are historical guidance, not newly verified recommendations.
+The [model-routing guide](model-routing.md) retains its historical model choices, benchmark claims, and task boundaries. Its obsolete reference to a missing skill now points to this optional workflow guide.
 
 The legacy guidance below is preserved from the root `AGENTS.md`. It differs from the model-routing guide on reasoning levels and which tasks to delegate. Both remain available pending a separate review; this PR does not select new models or change task ownership.
 

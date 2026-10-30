@@ -6,6 +6,7 @@ This file holds rules and pointers. **The pointed-to docs are mandatory reading 
 
 | Trigger | Read first |
 |---|---|
+| Choosing a model or delegating to Codex | `docs/agents/model-routing.md` |
 | Adding a table, adding a column to an org-cascade table, or any config/policy table | `docs/agents/tenancy-rls.md` |
 | Writing or renaming a migration | `apps/api/migrations/README.md` |
 | Running a scoped test or a contract/integration suite; deciding which CI job catches what | `docs/agents/testing.md` (conventions: `breeze-testing` skill) |
