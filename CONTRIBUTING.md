@@ -71,7 +71,7 @@ docker compose ls -a   # shows any stack still running, from any checkout
 - **API**: http://localhost:3001
 - **Default login**: `admin@breeze.local` / `BreezeAdmin123!` (change after first login)
 
-### 🧰 Git worktree dependencies
+### Git worktree dependencies
 
 Each Git worktree needs its own dependency links because `node_modules` is not shared between worktrees. pnpm can reuse its package store, but each checkout still needs an installation. After creating a worktree or switching to a checkout without installed dependencies, install its locked dependencies before running tests:
 

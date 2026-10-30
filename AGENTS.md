@@ -1,4 +1,4 @@
-# Breeze contributor instructions
+# Breeze RMM - Agent Context
 
 Breeze is a Remote Monitoring and Management (RMM) platform for MSPs and internal IT teams, targeting 10,000+ agents. Stack: Astro + React islands (web), Hono/TypeScript (API), PostgreSQL + Drizzle (queries only), BullMQ + Redis, Go agent, WebSocket + HTTP polling, WebRTC remote access.
 
@@ -24,7 +24,7 @@ This file holds rules and pointers. **The pointed-to docs are mandatory reading 
 ## Key Patterns
 
 ### Multi-Tenant Hierarchy
-```text
+```
 Partner (MSP) → Organization (Customer) → Site (Location) → Device Group → Device
 ```
 
@@ -74,7 +74,7 @@ Hand-written SQL in `apps/api/migrations/` — never `drizzle-kit generate`/`pus
 
 ### Design decisions
 - Choose the design that is best long-term, not fastest to implement.
-- For consequential, hard-to-reverse choices, form your own position and seek an independent review with available tools. Resolve disagreements on the evidence or bring the unresolved decision to the user.
+- For consequential, hard-to-reverse choices (new tables/tenancy shapes, cross-module contracts, public API surface), convene an advisor quorum: form your own position, get an independent read-only opinion from another model or agent (the Codex recipe is in [optional harness workflows](docs/agents/harness-workflows.md)). Agree → proceed. Disagree → resolve on the merits or surface it to the user with a recommendation.
 
 ### When to ask vs. proceed
 - **Proceed** on reversible decisions inside the task's scope (naming, layout, test structure, choosing among repo patterns); note the default in one line.
@@ -99,22 +99,15 @@ Claude-to-Codex delegation, model routing, and plugin-based feature tracking are
 Vitest (API, web, shared), Go `testing` (`go test -race ./...`), Playwright E2E (`data-testid` only). Tests sit alongside source. CI jobs `test-api`, `test-web`, `test-agent` and the 16-shard `integration-test` all block PRs. `pnpm test` does **not** run the RLS/integration contract suites. Scoped-run traps (never `pnpm --filter <pkg> test -- --run <path>`; vitest path filters are substring matches), contract-suite commands and CI job map: **`docs/agents/testing.md`**.
 
 ## Development Commands
-
-Install the Node.js version in `.nvmrc` and the pnpm version in `package.json`. Each worktree needs its own dependency installation. Follow [Development Setup](CONTRIBUTING.md#development-setup).
-
-```sh
-pnpm install --frozen-lockfile
-pnpm dev:app
-pnpm db:migrate
-pnpm db:seed
-pnpm db:check-drift
-pnpm db:studio
+```bash
+pnpm install && pnpm dev
+export DATABASE_URL="postgresql://breeze:breeze@localhost:5432/breeze"
+pnpm db:migrate | db:seed | db:check-drift | db:studio
 cd agent && make run
 ```
-
-Configure local database access in the worktree's `.env` using the contributor setup guide.
-
 Node is pinned to 22.23.4 (`.nvmrc`). No root typecheck script — typecheck runs via turbo/CI.
+
+Each worktree needs its own dependency installation: run `pnpm install --frozen-lockfile` before tests. See [Development Setup](CONTRIBUTING.md#development-setup).
 
 **Tear down what you bring up** (`pnpm wt-stack down`, `pnpm test-stack down`, compose `down -v`) and say what you left running — see `docs/agents/local-stacks.md`. Deleting a config file? Sweep compose bind mounts in the same PR (`composeBindMounts.test.ts`).
 

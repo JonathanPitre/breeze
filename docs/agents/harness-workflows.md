@@ -4,26 +4,26 @@ These workflows preserve existing Claude-to-Codex delegation guidance for contri
 
 Shared contributor requirements live in [AGENTS.md](../../AGENTS.md). Neither Claude Code nor Codex is required to invoke the other harness for ordinary contributor work. The recipes below require their named tools or plugins and apply only when you choose that workflow.
 
-## 🧭 Existing model routing
+## Existing model routing
 
 The [model-routing guide](model-routing.md) remains unchanged. Its model choices, benchmark claims, and task boundaries are historical guidance, not newly verified recommendations.
 
 The legacy guidance below is preserved from the root `AGENTS.md`. It differs from the model-routing guide on reasoning levels and which tasks to delegate. Both remain available pending a separate review; this PR does not select new models or change task ownership.
 
-## 🧩 Claude advisor workflow
+## Claude advisor workflow
 
 The following instruction previously appeared in `CLAUDE.md` and belongs to the optional Claude-to-Codex workflow.
 
 - For consequential, hard-to-reverse choices (new tables/tenancy shapes, cross-module contracts, public API surface), convene an advisor quorum: form your own position, get an independent `codex exec` opinion at `xhigh` (read-only). Agree → proceed. Disagree → resolve on the merits or surface it to the user with a recommendation.
 
-## 📌 Feature Lifecycle Tracking (multi-wave features)
+## Feature Lifecycle Tracking (multi-wave features)
 Multi-wave features are tracked on GitHub (parent issue labeled `feature`, `wave` sub-issues) via the `feature-lifecycle` MCP server and skill; GitHub state is the source of truth, not the plan doc. After `writing-plans` finishes a multi-wave plan: `register_feature` and add `tracking_issue:` to its frontmatter. Starting a wave: `get_feature_status`, branch `feature/<parent#>-<slug>/wave-<subissue#>`, `start_wave`. PR bodies carry `Closes #<sub-issue>`.
 
-## 📌 Codex Delegation
+## Codex Delegation
 
 This project uses OpenAI Codex CLI for task delegation. Claude orchestrates complex work while Codex handles isolated tasks.
 
-### 📌 Quick Commands
+### Quick Commands
 
 ```bash
 # Standard task
@@ -36,7 +36,7 @@ codex exec "<task>" --full-auto -c 'model_reasoning_effort="xhigh"'
 codex exec resume --last "<follow-up>"
 ```
 
-### 📌 Delegation Guidelines
+### Delegation Guidelines
 
 #### Delegate to Codex
 | Task | Reasoning | Example |
@@ -57,7 +57,7 @@ codex exec resume --last "<follow-up>"
 - Coordinating multiple Codex tasks
 - Final code review and integration
 
-### 📌 Reasoning Effort Findings
+### Reasoning Effort Findings
 
 | Level | Behavior | Use When |
 |-------|----------|----------|
@@ -66,7 +66,7 @@ codex exec resume --last "<follow-up>"
 | `high` | Thoughtful analysis | Code review, debugging |
 | `xhigh` | Strategic, concise, fewer tokens | Architecture decisions |
 
-### 📌 Token Costs (Tested)
+### Token Costs (Tested)
 
 | Task Type | Approximate Tokens |
 |-----------|-------------------|
@@ -76,7 +76,7 @@ codex exec resume --last "<follow-up>"
 | Security analysis | ~2.4-4.7k |
 | Architecture design | ~1.6-4.7k |
 
-### 📌 Codex Strengths (Observed)
+### Codex Strengths (Observed)
 
 - Uses `rg` efficiently for searches
 - Proactively creates directories and updates exports
