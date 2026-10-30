@@ -239,7 +239,7 @@ The following guidance reflects the older CI configuration. The current CI job m
 pnpm test
 
 # API only
-pnpm --filter @breeze/api test:run
+pnpm test --filter=@breeze/api
 
 # Go agent (with race detection)
 cd agent && go test -race ./...
