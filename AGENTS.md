@@ -109,11 +109,14 @@ pnpm db:migrate
 pnpm db:seed
 pnpm db:check-drift
 pnpm db:studio
+cd agent && make run
 ```
 
-Configure local database access in the worktree's `.env` using the contributor setup guide. No root typecheck script exists; typecheck runs through turbo and CI.
+Configure local database access in the worktree's `.env` using the contributor setup guide.
 
-Tear down stacks you start and report what remains running. See [local stacks](docs/agents/local-stacks.md). When deleting a config file, check compose bind mounts in the same PR (`composeBindMounts.test.ts`).
+Node is pinned to 22.23.4 (`.nvmrc`). No root typecheck script — typecheck runs via turbo/CI.
+
+**Tear down what you bring up** (`pnpm wt-stack down`, `pnpm test-stack down`, compose `down -v`) and say what you left running — see `docs/agents/local-stacks.md`. Deleting a config file? Sweep compose bind mounts in the same PR (`composeBindMounts.test.ts`).
 
 ## PR Merge & Deploy
 - Merge with `gh pr merge <N>` — the merge queue owns strategy. **Never `--admin`** except a declared emergency, followed by `gh workflow run CI --ref main`.

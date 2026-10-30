@@ -37,6 +37,7 @@ Do not make symlinks the required compatibility mechanism. Windows Git checkouts
 
 ## 🛡️ Boundaries
 
+- Preserve the original instruction wording as closely as possible. Limit edits to consolidation, explicit conflicts, optional harness workflows, compatibility, and dependency setup. Further token optimization or prose restructuring is outside this PR.
 - Do not change Breeze's application-level AI integrations or model configuration.
 - Do not edit shipped database migrations or historical documents solely to replace harness names.
 - Do not require a new dependency, orchestration framework, or personal plugin installation for the shared workflow.
