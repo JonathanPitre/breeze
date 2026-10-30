@@ -129,6 +129,8 @@ if (!(err instanceof ActionError)) showToast({ type: 'error', ... }); // non-401
 
 The `no-silent-mutations` test (`apps/web/src/lib/__tests__/no-silent-mutations.test.ts`) guards the adopted set. Legitimate exceptions (typed service layers, aggregate/partial-success handlers with inline error UI) are recorded in `apps/web/src/lib/runActionAllowlist.ts`. Spec: `docs/superpowers/specs/web-ui/2026-05-15-ws-a-action-feedback-design.md`.
 
+---
+
 ### Settings — one concept, one home
 A setting is edited in one place per level, lives with its domain, and resolves partner default → org override → snapshot on the document. Full nine rules: `docs/agents/settings.md`. **Rule 9:** a PR that adds a setting states its home, level, resolver, and the count of places the concept is configured before and after (PR template checkbox). Nav registration enforced by `settingsPageRegistry.test.ts`.
 
@@ -146,7 +148,7 @@ Hand-written SQL in `apps/api/migrations/` — never `drizzle-kit generate`/`pus
    - **Idempotent:** `CREATE TABLE IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`, `DROP CONSTRAINT IF EXISTS` then re-add, `DO $$ BEGIN ... EXCEPTION`, `pg_policies` existence checks for policies. Re-applying must be a no-op.
    - **No inner `BEGIN;`/`COMMIT;`:** `autoMigrate` wraps each file in `client.begin(...)`. Adding your own transaction blocks emits `NOTICE: there is already a transaction in progress` and serves no purpose.
    - **Cleanup statements must report row counts:** a migration that UPDATEs/DELETEs suspect rows (e.g. before adding a constraint) should wrap the statement in `DO $$ ... GET DIAGNOSTICS n = ROW_COUNT; IF n > 0 THEN RAISE WARNING 'cleaned % <what>', n; END IF; END $$;` so the count lands in Postgres logs. Silently fixing bad data destroys the forensic trail — if those rows could evidence a tenant-isolation breach, you want a recorded count even when it's 0 (lesson from `2026-06-10-c`).
-   - **Never edit a shipped migration** — fix forward with a new migration. (Renaming is also editing for tracking purposes: `breeze_migrations` keys on filename, so a rename causes already-migrated DBs to re-apply under the new name. Only acceptable when the file is fully idempotent and re-application is a true no-op.)
+   - **Never edit a shipped migration** — fix forward with a new migration. (Renaming is also editing for tracking purposes: `breeze_migrations` keys on filename, so a rename causes already-migrated DBs to re-apply under the new name. Do not rename a shipped migration.)
 3. Run `pnpm db:check-drift` to verify schema matches migrations
 4. Commit the migration file
 
@@ -177,12 +179,7 @@ Match rigor to blast radius: full ceremony for tenancy/RLS, auth, migrations, bi
 ### Subagents & main-context preservation
 Delegate exploration, large reads, log/test-output inspection, and reviews; keep the main context for decisions. Subagent prompts are self-contained (paths, question, return shape). **Never take a subagent's "done" at face value** — verify the commit exists, the tests ran, and it's on the right branch. Checkpoint-commit on long runs.
 
-## Optional harness workflows
-
-Claude-to-Codex delegation, model routing, and plugin-based feature tracking are preserved in [optional harness workflows](docs/agents/harness-workflows.md). They are optional and do not require contributors using one harness to install the other.
-
-## Testing
-Vitest (API, web, shared), Go `testing` (`go test -race ./...`), Playwright E2E (`data-testid` only). Tests sit alongside source. CI jobs `test-api`, `test-web`, `test-agent` and the 16-shard `integration-test` all block PRs. `pnpm test` does **not** run the RLS/integration contract suites. Scoped-run traps (never `pnpm --filter <pkg> test -- --run <path>`; vitest path filters are substring matches), contract-suite commands and CI job map: **`docs/agents/testing.md`**.
+## Testing Standards
 
 ### Frameworks & Configuration
 - **API**: Vitest — `apps/api/vitest.config.ts` (unit), `vitest.config.rls.ts` (RLS), `vitest.integration.config.ts` (integration)
@@ -196,94 +193,6 @@ Vitest (API, web, shared), Go `testing` (`go test -race ./...`), Playwright E2E 
 - API: `routes/devices.ts` → `routes/devices.test.ts`
 - Go: `internal/discovery/scanner.go` → `internal/discovery/scanner_test.go`
 - Shared: `validators/filters.ts` → `validators/filters.test.ts`
-
-## Development Commands
-
-```bash
-# Install dependencies
-pnpm install
-
-# Start development servers
-pnpm dev
-
-# Database operations
-export DATABASE_URL="postgresql://breeze:breeze@localhost:5432/breeze"
-pnpm db:check-drift  # Verify schema matches migrations (no drift)
-pnpm db:studio       # Open Drizzle Studio
-
-# Agent development
-cd agent && make run
-```
-Node is pinned to 22.23.4 (`.nvmrc`). No root typecheck script — typecheck runs via turbo/CI.
-
-Each worktree needs its own dependency installation: run `pnpm install --frozen-lockfile` before tests. See [Development Setup](CONTRIBUTING.md#development-setup).
-
-**Tear down what you bring up** (`pnpm wt-stack down`, `pnpm test-stack down`, compose `down -v`) and say what you left running — see `docs/agents/local-stacks.md`. Deleting a config file? Sweep compose bind mounts in the same PR (`composeBindMounts.test.ts`).
-
-## PR Merge & Deploy
-- Merge with `gh pr merge <N>` — the merge queue owns strategy. **Never `--admin`** except a declared emergency, followed by `gh workflow run CI --ref main`.
-- A production deploy updates `BREEZE_VERSION`, pulls/ups the named services, prunes images, then **asserts version parity across every running service** (the service list goes stale). Required env vars and the full runbook: `docs/agents/merge-and-deploy.md`.
-- Watchtower must never auto-update `breeze-api`/`breeze-web` (`scripts/security/check-supply-chain-hardening.sh`).
-
-## GitHub conventions
-
-### GitHub Naming
-- Do not use the `codex/` branch prefix for Breeze work. This applies even when Codex creates the branch or PR.
-- Follow the existing GitHub branch patterns: `fix/<issue>-<short-slug>`, `feat/<issue>-<short-slug>`, `docs/<short-slug>`, `chore/<short-slug>`, `ops/<short-slug>`, `hotfix/<short-slug>`, or `integration/<short-slug>`.
-- If there is no issue number, use the same prefix with a concise slug, e.g. `fix/<short-slug>` or `feat/<short-slug>`.
-- Use `pr-####` or `pr-####-review` only when the branch is specifically for inspecting or reviewing an existing PR.
-- Keep branch slugs lowercase, kebab-case, and specific to the work. Avoid agent/tool/vendor prefixes such as `codex/`, `claude/`, or similar.
-- PR titles should follow the existing convention where useful: `fix(scope): summary`, `feat(scope): summary`, `docs(scope): summary`, or `chore(scope): summary`. Include the issue number as `(#1234)` when the work is tied to an issue.
-
-### Linking Issues from a PR
-
-The PR **body** decides whether the issue survives the merge. Pick deliberately —
-this is not a stylistic choice.
-
-- **`Closes #1234`** — the PR fully resolves the issue. Use this by default. The
-  issue closes automatically on merge and leaves the backlog.
-- **`Refs #1234`** — the PR resolves only part of the issue, or the issue is a
-  community report whose reporter still has to verify on their own hardware. When
-  you use `Refs`, **state in the PR body which half shipped and which did not** —
-  a bare `Refs` with no scope note is how a fixed issue becomes permanent backlog.
-
-`Refs` was the de-facto default for a long time and it does not close anything, so
-~15 fully-fixed issues sat open for weeks (#2728, #2814, #2894, #2895, #2896, #2913,
-#2950, #2974, #2997, #2999, #3000, #3006, #3201 among them). Default to `Closes`;
-reach for `Refs` only when one of the two reasons above actually applies.
-
-Mechanics: `Closes #X #Y` auto-closes **only** `#X`. Repeat the keyword per issue —
-`Closes #X, closes #Y`.
-
-## Docker Compose Modes
-
-Three named override files exist — no auto-applied `docker-compose.override.yml` by default.
-
-| File | Purpose |
-|---|---|
-| `docker-compose.override.yml.dev` | Code-mounted hot-reload (builds from `Dockerfile.api.dev` / `Dockerfile.web.dev`) |
-| `docker-compose.override.yml.ghcr` | Pre-built GHCR images (linux/amd64) |
-| `docker-compose.override.yml.local-build` | Native arm64 local build from production Dockerfiles |
-
-```bash
-# Dev mode (code-mounted, hot-reload)
-docker compose -f docker-compose.yml -f docker-compose.override.yml.dev up --build -d
-
-# GHCR mode (pre-built images)
-docker compose -f docker-compose.yml -f docker-compose.override.yml.ghcr up -d
-
-# Local build mode (native arm64)
-docker compose -f docker-compose.yml -f docker-compose.override.yml.local-build up --build -d
-
-# Do not create a root docker-compose.override.yml for shared commits;
-# Docker Compose auto-loads that filename and can weaken production defaults.
-#
-# For local-only use, symlink whichever mode you want as default, but do not commit it:
-# ln -sf docker-compose.override.yml.dev docker-compose.override.yml
-# docker compose up --build -d
-```
-
-## Test-writing conventions
 
 ### Writing API Route Tests (Vitest)
 - Mock Drizzle ORM query chains matching the exact chain pattern in the source (e.g., `select().from().where()`)
@@ -316,6 +225,14 @@ docker compose -f docker-compose.yml -f docker-compose.override.yml.local-build 
 5. **Error cases** — not found, conflict, server error
 6. **Edge cases** — empty arrays, nil inputs, concurrent access
 
+### CI Integration
+The following guidance reflects the older CI configuration. The current CI job map is in `docs/agents/testing.md`; integration tests are required.
+- All tests run automatically in CI (`.github/workflows/ci.yml`)
+- `test-api`, `test-web`, `test-agent` are **required** jobs on PRs
+- New test files are auto-discovered — no CI config changes needed
+- Go coverage is uploaded as artifact; no threshold enforced yet
+- Integration tests run in `smoke-test` job with `continue-on-error: true`
+
 ### Running Tests Locally
 ```bash
 # All tests
@@ -334,7 +251,112 @@ cd agent && go test -race ./internal/discovery/...
 cd e2e-tests && pnpm test
 ```
 
-## Production Deploy
+---
+
+## Optional harness workflows
+
+Claude-to-Codex delegation, model routing, and plugin-based feature tracking are preserved in [optional harness workflows](docs/agents/harness-workflows.md). They are optional and do not require contributors using one harness to install the other.
+
+## Development Commands
+
+```bash
+# Install dependencies
+pnpm install
+
+# Start development servers
+pnpm dev
+
+# Database operations
+export DATABASE_URL="postgresql://breeze:breeze@localhost:5432/breeze"
+pnpm db:check-drift  # Verify schema matches migrations (no drift)
+pnpm db:studio       # Open Drizzle Studio
+
+# Agent development
+cd agent && make run
+```
+
+Node is pinned to 22.23.4 (`.nvmrc`). No root typecheck script — typecheck runs via turbo/CI.
+
+Each worktree needs its own dependency installation: run `pnpm install --frozen-lockfile` before tests. See [Development Setup](CONTRIBUTING.md#development-setup).
+
+**Tear down what you bring up** (`pnpm wt-stack down`, `pnpm test-stack down`, compose `down -v`) and say what you left running — see `docs/agents/local-stacks.md`. Deleting a config file? Sweep compose bind mounts in the same PR (`composeBindMounts.test.ts`).
+
+### Schema Migration Workflow
+1. Edit schema files in `apps/api/src/db/schema/`
+2. Write a hand-written SQL migration in `apps/api/migrations/`. The runner accepts any filename matching `^\d{4}-.*\.sql$` and applies them in `localeCompare` (lexicographic) order, so the prefix has to sort correctly.
+   - **Idempotent:** `CREATE TABLE IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`, `DROP CONSTRAINT IF EXISTS` then re-add, `DO $$ BEGIN ... EXCEPTION`, `pg_policies` existence checks for policies. Re-applying must be a no-op.
+   - **No inner `BEGIN;`/`COMMIT;`:** `autoMigrate` wraps each file in `client.begin(...)`. Adding your own transaction blocks emits `NOTICE: there is already a transaction in progress` and serves no purpose.
+   - **Cleanup statements must report row counts:** a migration that UPDATEs/DELETEs suspect rows (e.g. before adding a constraint) should wrap the statement in `DO $$ ... GET DIAGNOSTICS n = ROW_COUNT; IF n > 0 THEN RAISE WARNING 'cleaned % <what>', n; END IF; END $$;` so the count lands in Postgres logs. Silently fixing bad data destroys the forensic trail — if those rows could evidence a tenant-isolation breach, you want a recorded count even when it's 0 (lesson from `2026-06-10-c`).
+   - **Never edit a shipped migration** — fix forward with a new migration. (Renaming is also editing for tracking purposes: `breeze_migrations` keys on filename, so a rename causes already-migrated DBs to re-apply under the new name. Do not rename a shipped migration.)
+3. Run `pnpm db:check-drift` to verify schema matches migrations
+4. Commit the migration file
+
+**Drizzle usage:** Drizzle ORM is used for type-safe queries only. `drizzle-kit` is retained for schema drift detection (`db:check-drift`) and Drizzle Studio (`db:studio`). **Do not use `drizzle-kit generate` or `drizzle-kit push` for migrations.**
+
+For optional TimescaleDB setup, see `apps/api/migrations/optional/`.
+
+### Docker Compose Modes
+
+Three named override files exist — no auto-applied `docker-compose.override.yml` by default.
+
+| File | Purpose |
+|---|---|
+| `docker-compose.override.yml.dev` | Code-mounted hot-reload (builds from `Dockerfile.api.dev` / `Dockerfile.web.dev`) |
+| `docker-compose.override.yml.ghcr` | Pre-built GHCR images (linux/amd64) |
+| `docker-compose.override.yml.local-build` | Native arm64 local build from production Dockerfiles |
+
+```bash
+# Dev mode (code-mounted, hot-reload)
+docker compose -f docker-compose.yml -f docker-compose.override.yml.dev up --build -d
+
+# GHCR mode (pre-built images)
+docker compose -f docker-compose.yml -f docker-compose.override.yml.ghcr up -d
+
+# Local build mode (native arm64)
+docker compose -f docker-compose.yml -f docker-compose.override.yml.local-build up --build -d
+
+# Do not create a root docker-compose.override.yml for shared commits;
+# Docker Compose auto-loads that filename and can weaken production defaults.
+#
+# For local-only use, symlink whichever mode you want as default, but do not commit it:
+# ln -sf docker-compose.override.yml.dev docker-compose.override.yml
+# docker compose up --build -d
+```
+
+### PR Merge Process
+- Merge with `gh pr merge <N>` — the merge queue owns strategy. **Never `--admin`** except a declared emergency, followed by `gh workflow run CI --ref main`.
+- A production deploy updates `BREEZE_VERSION`, pulls/ups the named services, prunes images, then **asserts version parity across every running service** (the service list goes stale). Required env vars and the full runbook: `docs/agents/merge-and-deploy.md`.
+- Watchtower must never auto-update `breeze-api`/`breeze-web` (`scripts/security/check-supply-chain-hardening.sh`).
+
+### GitHub Naming
+- Do not use the `codex/` branch prefix for Breeze work. This applies even when Codex creates the branch or PR.
+- Follow the existing GitHub branch patterns: `fix/<issue>-<short-slug>`, `feat/<issue>-<short-slug>`, `docs/<short-slug>`, `chore/<short-slug>`, `ops/<short-slug>`, `hotfix/<short-slug>`, or `integration/<short-slug>`.
+- If there is no issue number, use the same prefix with a concise slug, e.g. `fix/<short-slug>` or `feat/<short-slug>`.
+- Use `pr-####` or `pr-####-review` only when the branch is specifically for inspecting or reviewing an existing PR.
+- Keep branch slugs lowercase, kebab-case, and specific to the work. Avoid agent/tool/vendor prefixes such as `codex/`, `claude/`, or similar.
+- PR titles should follow the existing convention where useful: `fix(scope): summary`, `feat(scope): summary`, `docs(scope): summary`, or `chore(scope): summary`. Include the issue number as `(#1234)` when the work is tied to an issue.
+
+### Linking Issues from a PR
+
+The PR **body** decides whether the issue survives the merge. Pick deliberately —
+this is not a stylistic choice.
+
+- **`Closes #1234`** — the PR fully resolves the issue. Use this by default. The
+  issue closes automatically on merge and leaves the backlog.
+- **`Refs #1234`** — the PR resolves only part of the issue, or the issue is a
+  community report whose reporter still has to verify on their own hardware. When
+  you use `Refs`, **state in the PR body which half shipped and which did not** —
+  a bare `Refs` with no scope note is how a fixed issue becomes permanent backlog.
+
+`Refs` was the de-facto default for a long time and it does not close anything, so
+~15 fully-fixed issues sat open for weeks (#2728, #2814, #2894, #2895, #2896, #2913,
+#2950, #2974, #2997, #2999, #3000, #3006, #3201 among them). Default to `Closes`;
+reach for `Refs` only when one of the two reasons above actually applies.
+
+Mechanics: `Closes #X #Y` auto-closes **only** `#X`. Repeat the keyword per issue —
+`Closes #X, closes #Y`.
+
+### Production Deploy
 
 Production hosts pull from `/opt/breeze` and use mutable image tags driven by `BREEZE_VERSION` in `/opt/breeze/.env`. Keep hostnames, regions, and internal mappings out of tracked files; use placeholders in docs and examples.
 
@@ -372,3 +394,14 @@ When introducing a new required env var: add it to `/opt/breeze/.env` AND map it
 **Watchtower policy (#603):** repo-tracked compose files never include Watchtower (enforced by `check-supply-chain-hardening.sh`). On production hosts, Watchtower is acceptable for sidecars (caddy, redis, postgres-exporter, cloudflared) but **must not** auto-update `breeze-api` or `breeze-web`. Concretely, the `com.centurylinklabs.watchtower.enable: "true"` label is forbidden on those two services. The hardening check additionally rejects that label string in any tracked compose file as defense-in-depth.
 
 **Known drift:** the deployed `/opt/breeze/docker-compose.yml` may use Watchtower + mutable tags, while `deploy/docker-compose.prod.yml` in the repo uses digest-pinning + no Watchtower. The `check-supply-chain-hardening.sh` rule scans repo files only, so host drift isn't fully enforced. Reconciling this is tracked separately.
+
+## Current Status
+
+See `docs/PROJECT_STATUS.md` for implementation status and next steps.
+
+### Priority: Authentication System
+- Login/logout with JWT
+- MFA (TOTP)
+- Password reset flow
+- SSO integration
+- Rate limiting (Redis-backed sliding window)
