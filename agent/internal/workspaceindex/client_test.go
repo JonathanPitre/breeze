@@ -57,6 +57,26 @@ func newTestClient(t *testing.T, handler http.Handler) *Client {
 	})
 }
 
+func TestDefaultEndpointCarriesTheAgentIDTheGatewayAuthenticates(t *testing.T) {
+	var got string
+	serverURL, httpClient := newHTTPTestEndpoint(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r.URL.Path
+		_, _ = io.WriteString(w, `{"enabled":false}`)
+	}), "server.test")
+	client := NewClient(ClientConfig{
+		ServerURL:  func() string { return serverURL },
+		AgentID:    "agent-1",
+		AuthToken:  secmem.NewSecureString("agent-secret"),
+		HTTPClient: httpClient,
+	})
+	if _, err := client.FetchConfig(context.Background()); err != nil {
+		t.Fatalf("FetchConfig: %v", err)
+	}
+	if got != "/api/v1/workspace/agent/agent-1/crawl-config" {
+		t.Fatalf("path = %q, want the agent ID before crawl-config", got)
+	}
+}
+
 func TestFetchConfigSendsAuthorizationAndDecodesWireShape(t *testing.T) {
 	startedAt := time.Date(2026, time.July, 12, 12, 30, 0, 0, time.UTC)
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
