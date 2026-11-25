@@ -11,14 +11,14 @@ import (
 	"github.com/breeze-rmm/agent/internal/procspawn"
 )
 
-// dsclTimeout bounds every dscl invocation. These run on the daemon startup
+// dsclTimeout bounds a single dscl lookup. These run on the daemon startup
 // path (setupSocket) and a wedged opendirectoryd is a real macOS failure mode,
 // so a hung lookup must not hold the session broker — and therefore remote
 // desktop, backup IPC and the watchdog link — hostage indefinitely.
 const dsclTimeout = 10 * time.Second
 
-// ensureIPCGroupTimeout bounds the whole ensure_ipc_group.sh run, which makes
-// several dscl calls in sequence. It catches a wedged opendirectoryd, not a slow
+// ensureIPCGroupTimeout bounds the whole ensure_ipc_group.sh run, and the whole
+// read, append and verify of a group membership, each several dscl calls in sequence. It catches a wedged opendirectoryd, not a slow
 // one: under heavy load (a VM's first boot) the steady-state read alone can
 // exceed dsclTimeout, and killing the script mid-create risks the GID-less
 // record of #7829.
@@ -43,6 +43,11 @@ func lookupGroupIDDarwin(name string) (int, error) {
 func runDscl(args []string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), dsclTimeout)
 	defer cancel()
+	return runDsclContext(ctx, args)
+}
+
+// runDsclContext executes dscl with args until ctx ends.
+func runDsclContext(ctx context.Context, args []string) (string, error) {
 	out, err := procspawn.CommandContext(ctx, "dscl", args...).CombinedOutput()
 	if err != nil {
 		return string(out), fmt.Errorf("dscl %s: %w: %s",
@@ -91,7 +96,7 @@ func EnsureIPCGroup() error {
 // dscl's exit status, so a caller that sees a nil error knows the user really
 // is a member.
 func EnsureIPCGroupMember(username string) (bool, error) {
-	outcome, err := ensureGroupMemberViaDscl(runDscl, IPCGroupName, username)
+	outcome, err := ensureGroupMemberWithin(ensureIPCGroupTimeout, runDsclContext, IPCGroupName, username)
 	if outcome.ReadErr != nil {
 		// Logged rather than swallowed because this branch cannot tell the benign
 		// "freshly created group has no GroupMembership key yet" case apart from a

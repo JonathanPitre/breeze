@@ -1,12 +1,14 @@
 package sessionbroker
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
 	"os/user"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // IPCGroupName is the dedicated OS group that owns the agent's IPC socket.
@@ -203,6 +205,22 @@ func ensureGroupMemberViaDscl(run dsclRunner, group, username string) (groupMemb
 	}
 	outcome.Added = true
 	return outcome, nil
+}
+
+// ensureGroupMemberWithin runs ensureGroupMemberViaDscl with every dscl call
+// drawing on one deadline. Under heavy load a single read can outlast a per-call
+// limit, which then kills the read and the append alike. Once the deadline
+// passes no further call starts, so a read the deadline killed never becomes a
+// blind append (a killed append can still land, and a blind retry duplicates it).
+func ensureGroupMemberWithin(budget time.Duration, run func(context.Context, []string) (string, error), group, username string) (groupMemberOutcome, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), budget)
+	defer cancel()
+	return ensureGroupMemberViaDscl(func(args []string) (string, error) {
+		if err := ctx.Err(); err != nil {
+			return "", fmt.Errorf("dscl %s: %w after %s", strings.Join(args, " "), err, budget)
+		}
+		return run(ctx, args)
+	}, group, username)
 }
 
 // validIPCGroupMember rejects usernames that must never reach a privileged

@@ -1,10 +1,12 @@
 package sessionbroker
 
 import (
+	"context"
 	"errors"
 	"os"
 	"strings"
 	"testing"
+	"time"
 )
 
 // These tests deliberately live in an untagged file. The bug they cover
@@ -570,5 +572,48 @@ func TestLookupGroupIDViaDsclReportsBothFailures(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "dscl exploded") {
 		t.Errorf("error %v does not mention the dscl failure", err)
+	}
+}
+
+func TestEnsureGroupMemberWithinGivesEveryDsclCallOneDeadline(t *testing.T) {
+	var deadlines []time.Time
+	reads := []string{"GroupMembership: alice\n", "GroupMembership: alice jingxie\n"}
+	run := func(ctx context.Context, args []string) (string, error) {
+		deadline, _ := ctx.Deadline()
+		deadlines = append(deadlines, deadline)
+		if args[1] == "-append" {
+			return "", nil
+		}
+		out := reads[0]
+		reads = reads[1:]
+		return out, nil
+	}
+	start := time.Now()
+	outcome, err := ensureGroupMemberWithin(time.Minute, run, "breeze", "jingxie")
+	if err != nil || !outcome.Added {
+		t.Fatalf("outcome = %+v, err = %v; want an added member", outcome, err)
+	}
+	if len(deadlines) != 3 {
+		t.Fatalf("made %d dscl calls, want read, append, verify", len(deadlines))
+	}
+	for _, d := range deadlines {
+		if !d.Equal(deadlines[0]) || d.Before(start.Add(time.Minute)) {
+			t.Fatalf("deadlines %v: want one shared deadline a minute out", deadlines)
+		}
+	}
+}
+
+func TestEnsureGroupMemberWithinDoesNotAppendAfterTheBudgetKillsTheRead(t *testing.T) {
+	var calls [][]string
+	run := func(ctx context.Context, args []string) (string, error) {
+		calls = append(calls, args)
+		<-ctx.Done() // dscl wedged until the deadline kills it
+		return "", errors.New("signal: killed")
+	}
+	if _, err := ensureGroupMemberWithin(10*time.Millisecond, run, "breeze", "jingxie"); err == nil {
+		t.Fatal("err = nil after the budget ran out")
+	}
+	if len(calls) != 1 {
+		t.Fatalf("dscl calls %v: want only the read, no blind append", calls)
 	}
 }
