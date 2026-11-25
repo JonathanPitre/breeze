@@ -17,6 +17,13 @@ import (
 // desktop, backup IPC and the watchdog link — hostage indefinitely.
 const dsclTimeout = 10 * time.Second
 
+// ensureIPCGroupTimeout bounds the whole ensure_ipc_group.sh run, which makes
+// several dscl calls in sequence. It catches a wedged opendirectoryd, not a slow
+// one: under heavy load (a VM's first boot) the steady-state read alone can
+// exceed dsclTimeout, and killing the script mid-create risks the GID-less
+// record of #7829.
+const ensureIPCGroupTimeout = time.Minute
+
 func init() {
 	ipcGroupIDLookup = lookupGroupIDDarwin
 }
@@ -54,18 +61,18 @@ func runDscl(args []string) (string, error) {
 // otherwise never get a group for the socket to belong to and would stay
 // broken forever.
 func EnsureIPCGroup() error {
-	ctx, cancel := context.WithTimeout(context.Background(), dsclTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), ensureIPCGroupTimeout)
 	defer cancel()
 	cmd := procspawn.CommandContext(ctx, "/bin/sh", "-c", ensureIPCGroupScript)
 	// The context kills only sh. A dscl it spawned that is wedged on
 	// opendirectoryd would keep the output pipe open and block Wait past
-	// dsclTimeout; WaitDelay bounds that so daemon startup cannot hang here.
+	// ensureIPCGroupTimeout; WaitDelay bounds that so daemon startup cannot hang here.
 	cmd.WaitDelay = 2 * time.Second
 	out, err := cmd.CombinedOutput()
 	msg := strings.TrimSpace(string(out))
 	if err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
-			err = fmt.Errorf("%w (%w after %s)", err, ctxErr, dsclTimeout)
+			err = fmt.Errorf("%w (%w after %s)", err, ctxErr, ensureIPCGroupTimeout)
 		}
 		return fmt.Errorf("ensure %q group: %w: %s", IPCGroupName, err, msg)
 	}
