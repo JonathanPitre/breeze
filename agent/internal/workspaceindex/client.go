@@ -64,7 +64,12 @@ type ClientConfig struct {
 	// promotion after failover (#2323) is visible to every request. A copied
 	// cfg.ServerURL kept uploading to a dead primary for the process lifetime
 	// (#2423).
-	ServerURL    func() string
+	ServerURL func() string
+	// AgentID completes the default endpoint base as /api/v1/workspace/agent/{id}.
+	// The extension gateway authenticates agent traffic by the ID in that
+	// segment; without it the first path segment (crawl-config, runs) is read as
+	// the agent ID and every request fails with 401 Invalid agent credentials.
+	AgentID      string
 	EndpointBase string
 	AuthToken    *secmem.SecureString
 	HTTPClient   *http.Client
@@ -85,6 +90,9 @@ func NewClient(cfg ClientConfig) *Client {
 	endpointBase := strings.TrimRight(cfg.EndpointBase, "/")
 	if endpointBase == "" {
 		endpointBase = DefaultEndpointBase
+		if cfg.AgentID != "" {
+			endpointBase += "/" + url.PathEscape(cfg.AgentID)
+		}
 	}
 	if !strings.HasPrefix(endpointBase, "/") {
 		endpointBase = "/" + endpointBase

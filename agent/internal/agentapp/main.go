@@ -1111,6 +1111,7 @@ func startAgent(cfg *config.Config) (*agentComponents, error) {
 			// URL provider, not a copied string — see the UniFi collector
 			// wiring above (#2423).
 			ServerURL:    hb.ServerURL,
+			AgentID:      cfg.AgentID,
 			EndpointBase: cfg.WorkspaceIndex.EndpointBase,
 			AuthToken:    secureToken,
 			HTTPClient:   newUnifiAPIClient(secureToken, tlsCfg),
